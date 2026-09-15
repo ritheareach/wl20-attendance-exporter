@@ -324,13 +324,30 @@ def parse_attendance_payload(payload: bytes, users: Sequence[DeviceUser],
 # ---------------------------------------------------------------------------
 
 
+def _root_cause(exc: BaseException) -> BaseException:
+    """Follow pyzk's wrapping chain down to the socket-level error."""
+    current = exc
+    seen = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        nxt = current.__cause__ or current.__context__
+        if nxt is None:
+            break
+        current = nxt
+    return current
+
+
 def _explain(exc: Exception) -> str:
     text = f"{type(exc).__name__}: {exc}"
-    if isinstance(exc, (socket.timeout, TimeoutError)) or "timed out" in str(exc).lower():
+    cause = _root_cause(exc)
+    blob = f"{type(cause).__name__} {cause} {exc}".lower()
+    if isinstance(cause, (socket.timeout, TimeoutError)) or "timed out" in blob:
         return f"{text}\n{BUSY_HINT}"
-    if isinstance(exc, (ConnectionRefusedError, ConnectionResetError, OSError)):
+    if (isinstance(cause, OSError) or "refused" in blob or "broken pipe" in blob
+            or "unreachable" in blob):
         return (f"{text}\nCheck that the terminal is powered, on the same network, "
-                f"and that TCP communication is enabled on it.")
+                f"and that TCP communication is enabled on it. If the FaceGO server "
+                f"is running, it usually holds the terminal's only session.")
     return text
 
 

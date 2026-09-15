@@ -72,22 +72,25 @@ def _print_read_summary(read) -> None:
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
 
-    print(f"Connecting to {args.host}:{args.port} ...")
+    def say(message: str = "") -> None:
+        print(message, flush=True)
+
+    say(f"Connecting to {args.host}:{args.port} ...")
     try:
         if args.test:
             info = device.test_connection(args.host, port=args.port, password=args.password,
                                           timeout=args.timeout)
-            print("Connection OK")
-            print(f"Device:    {info.name or 'unknown'}")
-            print(f"Serial:    {info.serial or '?'}")
-            print(f"Firmware:  {info.firmware or '?'}")
-            print(f"Counters:  users={info.users}/{info.users_cap} "
-                  f"records={info.records}/{info.records_cap}")
+            say("Connection OK")
+            say(f"Device:    {info.name or 'unknown'}")
+            say(f"Serial:    {info.serial or '?'}")
+            say(f"Firmware:  {info.firmware or '?'}")
+            say(f"Counters:  users={info.users}/{info.users_cap} "
+                f"records={info.records}/{info.records_cap}")
             return 0
 
         read = device.read_all(args.host, port=args.port, password=args.password,
                                timeout=args.timeout, pause_device=args.pause_device,
-                               progress=print if args.verbose else None)
+                               progress=say if args.verbose else None)
     except device.DeviceError as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 2
