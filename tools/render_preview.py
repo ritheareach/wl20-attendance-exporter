@@ -80,7 +80,7 @@ def main() -> int:
     app = QApplication([])
     app.setStyleSheet(theme.STYLESHEET)
     window = gui.MainWindow()
-    window.resize(1180, 760)
+    window.resize(1280, 780)  # same default as the app itself
     window.preset_combo.setCurrentText("All records")
     window.show()
     app.processEvents()
