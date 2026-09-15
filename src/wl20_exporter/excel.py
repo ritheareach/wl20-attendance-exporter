@@ -30,9 +30,9 @@ WARN_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="sol
 THIN = Side(style="thin", color="BFBFBF")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
-DATE_FMT = "yyyy-mm-dd"
+DATE_FMT = "dd-mm-yyyy"
 TIME_FMT = "hh:mm:ss"
-DATETIME_FMT = "yyyy-mm-dd hh:mm:ss"
+DATETIME_FMT = "dd-mm-yyyy hh:mm:ss"
 
 CENTER = Alignment(horizontal="center", vertical="center")
 LEFT = Alignment(horizontal="left", vertical="center")
@@ -172,7 +172,7 @@ def _write_info_sheet(sheet, read: DeviceRead, start: Optional[date], end: Optio
     info = read.info
     pairs = [
         ("Report (របាយការណ៍)", "WL20 Attendance Exporter"),
-        ("Exported at (នាំចេញនៅ)", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        ("Exported at (នាំចេញនៅ)", datetime.now().strftime("%d-%m-%Y %H:%M:%S")),
         ("App version", __version__),
         ("Device name (ឈ្មោះឧបករណ៍)", info.name or "-"),
         ("Serial number (លេខសៀរៀល)", info.serial or "-"),
@@ -183,7 +183,9 @@ def _write_info_sheet(sheet, read: DeviceRead, start: Optional[date], end: Optio
         ("Records exported (កំណត់ត្រាបាននាំចេញ)", record_count),
         ("Read duration (s)", read.duration_seconds),
         ("Date range (ចន្លោះកាលបរិច្ឆេទ)",
-         f"{start or 'beginning'} .. {end or 'latest'}"),
+         f"{start:%d-%m-%Y} .. {end:%d-%m-%Y}" if start and end else
+         (f"from {start:%d-%m-%Y}" if start else
+          (f"until {end:%d-%m-%Y}" if end else "everything on the terminal"))),
         ("Decoded format", read.report.format_label),
     ]
     for position, (key, value) in enumerate(pairs, start=1):
@@ -270,7 +272,7 @@ def export_csv(path, records: Iterable[PunchRecord]) -> Path:
                          "punch", "status", "uid", "timestamp"])
         for record in records:
             writer.writerow([
-                record.timestamp.strftime("%Y-%m-%d"),
+                record.timestamp.strftime("%d-%m-%Y"),
                 record.timestamp.strftime("%H:%M:%S"),
                 record.user_id,
                 record.name,
@@ -278,19 +280,19 @@ def export_csv(path, records: Iterable[PunchRecord]) -> Path:
                 record.punch,
                 record.status,
                 record.uid,
-                record.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                record.timestamp.strftime("%d-%m-%Y %H:%M:%S"),
             ])
     return path
 
 
 def default_filename(start: Optional[date], end: Optional[date]) -> str:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M")
+    stamp = datetime.now().strftime("%H%M")
     if start and end:
-        span = f"{start:%Y%m%d}-{end:%Y%m%d}"
+        span = f"{start:%d-%m-%Y}_to_{end:%d-%m-%Y}"
     elif start:
-        span = f"from_{start:%Y%m%d}"
+        span = f"from_{start:%d-%m-%Y}"
     elif end:
-        span = f"until_{end:%Y%m%d}"
+        span = f"until_{end:%d-%m-%Y}"
     else:
         span = "all"
     return f"WL20_Attendance_{span}_{stamp}.xlsx"

@@ -98,7 +98,7 @@ class RecordsModel(QAbstractTableModel):
         column = index.column()
         if role == Qt.DisplayRole:
             if column == 0:
-                return record.timestamp.strftime("%Y-%m-%d")
+                return record.timestamp.strftime("%d-%m-%Y")
             if column == 1:
                 return record.timestamp.strftime("%H:%M:%S")
             if column == 2:
@@ -116,7 +116,7 @@ class RecordsModel(QAbstractTableModel):
         if role == Qt.TextAlignmentRole and column in (0, 1, 6):
             return int(Qt.AlignCenter)
         if role == Qt.ToolTipRole:
-            return (f"{record.timestamp:%Y-%m-%d %H:%M:%S}\n"
+            return (f"{record.timestamp:%d-%m-%Y %H:%M:%S}\n"
                     f"user_id={record.user_id} uid={record.uid}\n"
                     f"{record.punch_text} / {record.verify_text}")
         return None
@@ -160,7 +160,7 @@ class SummaryModel(QAbstractTableModel):
         column = index.column()
         if role == Qt.DisplayRole:
             if column == 0:
-                return row.day.strftime("%Y-%m-%d")
+                return row.day.strftime("%d-%m-%Y")
             if column == 1:
                 return row.user_id
             if column == 2:
@@ -328,10 +328,10 @@ class MainWindow(QMainWindow):
         self.preset_combo.addItems(PRESETS)
         self.from_edit = QDateEdit()
         self.from_edit.setCalendarPopup(True)
-        self.from_edit.setDisplayFormat("yyyy-MM-dd")
+        self.from_edit.setDisplayFormat("dd-MM-yyyy")
         self.to_edit = QDateEdit()
         self.to_edit.setCalendarPopup(True)
-        self.to_edit.setDisplayFormat("yyyy-MM-dd")
+        self.to_edit.setDisplayFormat("dd-MM-yyyy")
         today = QDate.currentDate()
         self.from_edit.setDate(today.addDays(-30))
         self.to_edit.setDate(today)

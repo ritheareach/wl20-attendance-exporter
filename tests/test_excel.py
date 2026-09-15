@@ -71,6 +71,8 @@ class WorkbookTests(unittest.TestCase):
         self.assertEqual(sheet.cell(row=2, column=7).value, "Check In")
         self.assertEqual(sheet.cell(row=4, column=7).value, "Check In")
         self.assertEqual(sheet.cell(row=2, column=2).value.date(), date(2026, 9, 14))
+        self.assertEqual(sheet.cell(row=2, column=2).number_format, "dd-mm-yyyy",
+                         "dates must display as DD-MM-YYYY")
 
     def test_summary_sheet_has_first_last_and_total(self):
         excel.export_workbook(self.path, sample_read())
@@ -114,13 +116,14 @@ class CsvTests(unittest.TestCase):
             self.assertEqual(len(lines), 4)
             self.assertTrue(lines[0].startswith("date,time,user_id"))
             self.assertIn("STF-0001", lines[1])
-            self.assertIn("2026-09-14,08:01:05", lines[1])
+            self.assertIn("14-09-2026,08:01:05", lines[1])
+            self.assertIn("14-09-2026 08:01:05", lines[1])
 
 
 class FilenameTests(unittest.TestCase):
-    def test_default_filename_range(self):
+    def test_default_filename_uses_dd_mm_yyyy(self):
         name = excel.default_filename(date(2026, 9, 1), date(2026, 9, 15))
-        self.assertTrue(name.startswith("WL20_Attendance_20260901-20260915_"))
+        self.assertTrue(name.startswith("WL20_Attendance_01-09-2026_to_15-09-2026_"))
         self.assertTrue(name.endswith(".xlsx"))
         self.assertIn("all", excel.default_filename(None, None))
 

@@ -77,6 +77,15 @@ class GuiSmokeTests(unittest.TestCase):
         self.assertEqual(self.window.preset_combo.currentText(), "Last 30 days")
         self.assertTrue(self.window.from_edit.isEnabled())
 
+    def test_dates_display_as_dd_mm_yyyy(self):
+        self.assertEqual(self.window.from_edit.displayFormat(), "dd-MM-yyyy")
+        self.assertEqual(self.window.to_edit.displayFormat(), "dd-MM-yyyy")
+        self.window.preset_combo.setCurrentText("All records")
+        self.window.on_fetched(sample_read())
+        first_date = self.window.records_proxy.index(0, 0).data()
+        self.assertRegex(first_date, r"^\d{2}-\d{2}-\d{4}$")
+        self.assertEqual(self.window.summary_model.index(0, 0).data(), "15-09-2026")
+
     def test_preset_all_records_disables_dates(self):
         self.window.preset_combo.setCurrentText("All records")
         self.assertFalse(self.window.from_edit.isEnabled())

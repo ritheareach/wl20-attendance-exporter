@@ -572,4 +572,4 @@ def _cross_check(info: DeviceInfo, users: Sequence[DeviceUser],
     if records:
         first = min(record.timestamp for record in records)
         last = max(record.timestamp for record in records)
-        report.add_note(f"decoded range: {first:%Y-%m-%d %H:%M:%S} .. {last:%Y-%m-%d %H:%M:%S}")
+        report.add_note(f"decoded range: {first:%d-%m-%Y %H:%M:%S} .. {last:%d-%m-%Y %H:%M:%S}")

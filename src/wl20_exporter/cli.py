@@ -12,13 +12,13 @@ from . import __version__, device, excel
 
 def parse_day(value: str) -> date:
     text = value.strip()
-    for pattern in ("%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y"):
+    for pattern in ("%d-%m-%Y", "%Y-%m-%d", "%Y/%m/%d"):
         try:
             return datetime.strptime(text, pattern).date()
         except ValueError:
             continue
     raise argparse.ArgumentTypeError(
-        f"invalid date {value!r} — use YYYY-MM-DD")
+        f"invalid date {value!r} — use DD-MM-YYYY")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,10 +35,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="device communication password (default: 0)")
     parser.add_argument("--timeout", type=int, default=device.DEFAULT_TIMEOUT,
                         help="socket timeout in seconds (default: 10)")
-    parser.add_argument("--from", dest="start", type=parse_day, metavar="YYYY-MM-DD",
-                        help="keep records on/after this date")
-    parser.add_argument("--to", dest="end", type=parse_day, metavar="YYYY-MM-DD",
-                        help="keep records on/before this date")
+    parser.add_argument("--from", dest="start", type=parse_day, metavar="DD-MM-YYYY",
+                        help="keep records on/after this date (DD-MM-YYYY)")
+    parser.add_argument("--to", dest="end", type=parse_day, metavar="DD-MM-YYYY",
+                        help="keep records on/before this date (DD-MM-YYYY)")
     parser.add_argument("--out", type=Path, metavar="FILE.xlsx",
                         help="Excel output path (default: WL20_Attendance_<range>.xlsx)")
     parser.add_argument("--csv", type=Path, metavar="FILE.csv",
@@ -98,8 +98,9 @@ def main(argv=None) -> int:
     filtered = read.filtered(args.start, args.end)
     _print_read_summary(read)
     if args.start or args.end:
-        print(f"Range filter:  {args.start or 'beginning'} .. {args.end or 'latest'} "
-              f"-> {len(filtered.records)} record(s)")
+        span = (f"{args.start:%d-%m-%Y}" if args.start else "beginning") + " .. " + \
+               (f"{args.end:%d-%m-%Y}" if args.end else "latest")
+        print(f"Range filter:  {span} -> {len(filtered.records)} record(s)")
 
     out = args.out or Path(excel.default_filename(args.start, args.end))
     if args.out is None:
@@ -119,7 +120,7 @@ def main(argv=None) -> int:
         records = filtered.records if args.limit == 0 else filtered.records[-args.limit:]
         print("\nLatest records:")
         for record in records:
-            print(f"  {record.timestamp:%Y-%m-%d %H:%M:%S}  "
+            print(f"  {record.timestamp:%d-%m-%Y %H:%M:%S}  "
                   f"user_id={record.user_id:<12} {record.punch_text:<12} "
                   f"{record.name}")
     return 0

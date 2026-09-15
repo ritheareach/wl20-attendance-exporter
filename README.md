@@ -72,11 +72,14 @@ wl20-export --host 192.168.88.245  # CLI
 wl20-export --out attendance.xlsx
 
 # A date range, plus a CSV copy of the raw records
-wl20-export --from 2026-09-01 --to 2026-09-15 --out september.xlsx --csv september.csv
+wl20-export --from 01-09-2026 --to 15-09-2026 --out september.xlsx --csv september.csv
 
 # Just test the connection / dump diagnostics
 wl20-export --test
 ```
+
+Dates are **DD-MM-YYYY** everywhere — in the app, in the Excel columns, in the CSV
+and on the command line (`YYYY-MM-DD` is still accepted).
 
 CLI options: `--host --port --password --timeout --from --to --out --csv --test --verbose`.
 
