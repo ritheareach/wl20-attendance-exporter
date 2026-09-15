@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
-    QDialog,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -506,13 +505,13 @@ class MainWindow(QMainWindow):
 
     def _set_busy(self, busy: bool, message: str = "") -> None:
         self.progress.setVisible(busy)
-        for widget in (self.fetch_button, self.test_button, self.export_button,
-                       self.csv_button, self.host_edit, self.port_spin,
+        for widget in (self.fetch_button, self.test_button, self.host_edit,
+                       self.port_spin,
                        self.password_spin, self.timeout_spin, self.pause_check):
-            widget.setEnabled(not busy and (widget is not self.export_button
-                                            or self.read_result is not None)
-                              and (widget is not self.csv_button
-                                   or self.read_result is not None))
+            widget.setEnabled(not busy)
+        has_data = self.read_result is not None
+        self.export_button.setEnabled(not busy and has_data)
+        self.csv_button.setEnabled(not busy and has_data)
         if message:
             self.log_line(message)
 
