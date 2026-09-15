@@ -34,6 +34,9 @@ DATE_FMT = "yyyy-mm-dd"
 TIME_FMT = "hh:mm:ss"
 DATETIME_FMT = "yyyy-mm-dd hh:mm:ss"
 
+CENTER = Alignment(horizontal="center", vertical="center")
+LEFT = Alignment(horizontal="left", vertical="center")
+
 # Bilingual column labels: English (Khmer).
 L = {
     "index": "No.",
@@ -71,6 +74,17 @@ def _autosize(sheet, widths: Sequence[int]) -> None:
         sheet.column_dimensions[get_column_letter(column)].width = width
 
 
+def _setup_print(sheet, landscape: bool = True, repeat_header: bool = False) -> None:
+    """Make the sheet print/export as one page wide instead of column fragments."""
+    sheet.page_setup.orientation = "landscape" if landscape else "portrait"
+    sheet.page_setup.fitToWidth = 1
+    sheet.page_setup.fitToHeight = 0
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    sheet.print_options.horizontalCentered = True
+    if repeat_header:
+        sheet.print_title_rows = "1:1"
+
+
 def _write_records_sheet(sheet, records: Sequence[PunchRecord], device_label: str) -> None:
     headers = [L["index"], L["date"], L["time"], L["staff_id"], L["name"],
                L["device_user"], L["punch"], L["verify"], L["uid"], L["device"]]
@@ -90,9 +104,12 @@ def _write_records_sheet(sheet, records: Sequence[PunchRecord], device_label: st
         sheet.cell(row=row, column=9, value=record.uid).font = DATA_FONT
         sheet.cell(row=row, column=10, value=device_label).font = DATA_FONT
         for column in range(1, len(headers) + 1):
-            sheet.cell(row=row, column=column).border = BORDER
+            cell = sheet.cell(row=row, column=column)
+            cell.border = BORDER
+            cell.alignment = CENTER if column in (1, 2, 3, 7, 8, 9) else LEFT
     _autosize(sheet, [6, 13, 11, 18, 30, 24, 14, 16, 8, 26])
     sheet.freeze_panes = "A2"
+    _setup_print(sheet, landscape=True, repeat_header=True)
     if records:
         sheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(records) + 1}"
 
@@ -123,7 +140,9 @@ def _write_summary_sheet(sheet, rows: Sequence[DailyRow]) -> None:
         if row_data.single_punch:
             note_cell.fill = WARN_FILL
         for column in range(1, len(headers) + 1):
-            sheet.cell(row=row, column=column).border = BORDER
+            cell = sheet.cell(row=row, column=column)
+            cell.border = BORDER
+            cell.alignment = CENTER if column in (1, 2, 5, 6, 7, 8) else LEFT
 
     totals = summary_totals(rows)
     total_row = len(rows) + 2
@@ -143,6 +162,7 @@ def _write_summary_sheet(sheet, rows: Sequence[DailyRow]) -> None:
 
     _autosize(sheet, [6, 13, 18, 30, 20, 20, 12, 14, 26])
     sheet.freeze_panes = "A2"
+    _setup_print(sheet, landscape=True, repeat_header=True)
     if rows:
         sheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(rows) + 1}"
 
@@ -171,6 +191,7 @@ def _write_info_sheet(sheet, read: DeviceRead, start: Optional[date], end: Optio
         key_cell.font = BOLD_FONT
         sheet.cell(row=position, column=2, value=value).font = DATA_FONT
     _autosize(sheet, [42, 46])
+    _setup_print(sheet, landscape=False)
 
 
 def _write_diagnostics_sheet(sheet, read: DeviceRead) -> None:
@@ -213,6 +234,7 @@ def _write_diagnostics_sheet(sheet, read: DeviceRead) -> None:
         row += 1
         sheet.cell(row=row, column=1, value="none").font = DATA_FONT
     _autosize(sheet, [40, 70])
+    _setup_print(sheet, landscape=False)
 
 
 def export_workbook(path, read: DeviceRead, start: Optional[date] = None,

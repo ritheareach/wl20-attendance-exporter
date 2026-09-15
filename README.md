@@ -39,6 +39,10 @@ code-signed: on Windows choose *More info → Run anyway* (SmartScreen), on macO
 right-click the app → *Open* (Gatekeeper). Verify the download against
 `SHA256SUMS.txt` from the same release.
 
+The Linux build needs the usual Qt runtime libraries — present on every desktop
+install, and available as `libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1`
+on a minimal/headless distribution.
+
 ## Run from source
 
 ```bash

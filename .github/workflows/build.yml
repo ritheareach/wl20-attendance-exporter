@@ -40,6 +40,15 @@ jobs:
           pip install -e .
           pip install pyinstaller
 
+      # Qt needs these at runtime; they ship with any desktop Linux but the
+      # hosted runner image is a server and does not have them.
+      - name: Install Qt runtime libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 \
+                                  libfontconfig1 libglib2.0-0
+
       - name: Run tests
         env:
           QT_QPA_PLATFORM: offscreen

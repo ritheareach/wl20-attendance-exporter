@@ -45,6 +45,8 @@ def sample_read() -> DeviceRead:
             if offset == 0 and position > 2:
                 continue
             for step, (hour, minute) in enumerate(TEMPLATE[:4]):
+                if offset == 0 and position == 0 and step == 3:
+                    continue  # leave one single-punch day so the Note flag shows
                 if step == 0 or step in (3,):
                     stamp = datetime(day.year, day.month, day.day, hour,
                                      minute + position * 3, (position * 7) % 60)
@@ -52,7 +54,8 @@ def sample_read() -> DeviceRead:
                                                timestamp=stamp, punch=1 if hour > 16 else 0,
                                                status=1))
     records.sort(key=lambda item: item.timestamp)
-    report = ParseReport(format_label="40-byte records", declared_bytes=len(records) * 40,
+    report = ParseReport(format_label="40-byte records", record_size=40,
+                         declared_bytes=len(records) * 40,
                          received_bytes=len(records) * 40, raw_records_read=len(records),
                          users_parsed=len(STAFF),
                          notes=[f"decoded range: {records[0].timestamp:%Y-%m-%d %H:%M:%S} .. "
