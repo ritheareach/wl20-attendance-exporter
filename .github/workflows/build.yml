@@ -72,6 +72,10 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           cd dist
+          # macOS ships as the .app bundle only: the loose Mach-O binary would
+          # otherwise be uploaded under the same asset name as the Linux build
+          # (the two jobs run in parallel), so remove it before packaging.
+          rm -f "WL20-Attendance-Exporter"
           zip -r -y "WL20-Attendance-Exporter-macos.zip" "WL20 Attendance Exporter.app"
           shasum -a 256 "WL20-Attendance-Exporter-macos.zip" > SHA256SUMS-${{ matrix.artifact }}.txt
 
