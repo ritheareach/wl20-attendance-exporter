@@ -37,11 +37,19 @@ EXCLUDES = [
     "tkinter", "unittest", "pydoc", "doctest", "pytest",
 ]
 
+# Platform icon from the AIFarm logo (generated from the office logo assets).
+if sys.platform == "win32":
+    ICON_FILE = SRC / "wl20_exporter" / "assets" / "icon.ico"
+elif sys.platform == "darwin":
+    ICON_FILE = SRC / "wl20_exporter" / "assets" / "icon.icns"
+else:
+    ICON_FILE = SRC / "wl20_exporter" / "assets" / "icon.png"
+
 a = Analysis(
     [str(SPEC_DIR / "launcher.py")],
     pathex=[str(SRC)],
     binaries=[],
-    datas=[],
+    datas=[(str(SRC / "wl20_exporter" / "assets"), "wl20_exporter/assets")],
     hiddenimports=["zk", "openpyxl", "wl20_exporter"],
     hookspath=[],
     hooksconfig={},
@@ -54,6 +62,7 @@ pyz = PYZ(a.pure)
 
 EXE_KWARGS = dict(
     name="WL20-Attendance-Exporter",
+    icon=str(ICON_FILE),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -71,7 +80,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         exe,
         name="WL20 Attendance Exporter.app",
-        icon=None,
+        icon=str(ICON_FILE),
         bundle_identifier="com.facego.wl20exporter",
         info_plist={
             "CFBundleName": "WL20 Attendance Exporter",

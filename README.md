@@ -112,6 +112,19 @@ Each build is verified after freezing with the packaged app's own smoke test:
 dist/WL20-Attendance-Exporter --selftest   # boots Qt + parser + exporter offscreen
 ```
 
+## Icon
+
+The app icon is the office **AIFarm** mark (cow head in the yellow frame), derived
+from `static/src/AIFarm_Logo _cropped.png` in the FaceGO repo. Regenerate the
+`.png` / `.ico` / `.icns` set after any logo change:
+
+```bash
+python tools/make_icon.py --source "/path/to/AIFarm_Logo _cropped.png"
+```
+
+The window icon loads at runtime from the bundled PNG, so it shows up in the
+Windows taskbar, the macOS dock and Linux window lists alike.
+
 ## Excel output
 
 | Sheet | Contents |

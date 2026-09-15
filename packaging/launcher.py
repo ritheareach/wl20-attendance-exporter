@@ -24,13 +24,20 @@ if __name__ == "__main__":
 
         app = gui.QApplication([])
         app.setStyleSheet(gui.STYLESHEET)
+        icon = gui.app_icon()
+        if icon.isNull():
+            print("selftest FAILED: the application icon is missing from the bundle")
+            raise SystemExit(1)
+        app.setWindowIcon(icon)
         window = gui.MainWindow()
         window.preset_combo.setCurrentText("All records")
         window.on_fetched(DeviceRead(info=DeviceInfo(host="selftest"),
                                      report=ParseReport()))
         window.close()
+        icon_sizes = icon.availableSizes()
         print(f"selftest OK — app {__version__} | PySide6 {PySide6.__version__} | "
               f"pyzk {getattr(zk, '__version__', 'ok')} | openpyxl {openpyxl.__version__} | "
+              f"icon {icon_sizes[0].width() if icon_sizes else '?'}px | "
               f"parser={device.decode_time.__name__} exporter={excel.export_workbook.__name__}")
         raise SystemExit(0)
 

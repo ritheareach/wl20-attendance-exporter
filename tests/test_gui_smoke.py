@@ -86,6 +86,13 @@ class GuiSmokeTests(unittest.TestCase):
         self.assertRegex(first_date, r"^\d{2}-\d{2}-\d{4}$")
         self.assertEqual(self.window.summary_model.index(0, 0).data(), "15-09-2026")
 
+    def test_app_icon_is_available(self):
+        from wl20_exporter import gui
+
+        self.assertTrue(gui.asset_path("icon.png").is_file())
+        self.assertFalse(gui.app_icon().isNull(), "the AIFarm icon must ship with the app")
+        self.assertFalse(self.window.windowIcon().isNull())
+
     def test_preset_all_records_disables_dates(self):
         self.window.preset_combo.setCurrentText("All records")
         self.assertFalse(self.window.from_edit.isEnabled())

@@ -18,7 +18,7 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -57,6 +57,27 @@ PRESETS = ["All records", "Today", "Last 7 days", "Last 30 days", "This month", 
 BUSY_NOTE = ("The terminal serves one connection at a time. While this app reads, the "
              "FaceGO live listener on the office server is pushed off its socket — run "
              "exports outside peak hours.")
+
+
+def asset_path(name: str) -> Path:
+    """Locate a bundled asset in a source checkout or inside a frozen build."""
+    roots = []
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root:
+        roots += [Path(frozen_root) / "wl20_exporter" / "assets",
+                  Path(frozen_root) / "assets"]
+    roots.append(Path(__file__).resolve().parent / "assets")
+    for root in roots:
+        candidate = root / name
+        if candidate.is_file():
+            return candidate
+    return roots[-1] / name
+
+
+def app_icon() -> QIcon:
+    """AIFarm icon; empty only if the asset was somehow not shipped."""
+    path = asset_path("icon.png")
+    return QIcon(str(path)) if path.is_file() else QIcon()
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +250,7 @@ class MainWindow(QMainWindow):
         self.worker: DeviceWorker | None = None
 
         self.setWindowTitle(f"{APP_TITLE} {__version__}")
+        self.setWindowIcon(app_icon())
         self.resize(1180, 760)
         self.setMinimumSize(980, 620)
 
@@ -769,6 +791,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(APP_TITLE)
     app.setApplicationVersion(__version__)
+    app.setWindowIcon(app_icon())
     app.setStyleSheet(STYLESHEET)
     window = MainWindow()
     window.show()
