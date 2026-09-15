@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -304,8 +305,12 @@ class DeviceWorker(QObject):
         super().__init__()
         self._job = ""
         self._kwargs: dict = {}
+        self._stop_flag = None
+        self._retry_seconds = 0.0
 
     def configure(self, job: str, **kwargs) -> None:
+        self._stop_flag = kwargs.pop("stop_flag", None)
+        self._retry_seconds = float(kwargs.pop("retry_seconds", 0.0))
         self._job = job
         self._kwargs = kwargs
 
@@ -315,7 +320,11 @@ class DeviceWorker(QObject):
             if self._job == "test":
                 self.tested.emit(device.test_connection(**self._kwargs))
             else:
-                read = device.read_all(progress=self.log.emit, **self._kwargs)
+                should_stop = self._stop_flag.is_set if self._stop_flag is not None else None
+                read = device.read_with_retry(progress=self.log.emit, log=self.log.emit,
+                                              should_stop=should_stop,
+                                              wait_seconds=self._retry_seconds,
+                                              delay=20.0, attempts=1, **self._kwargs)
                 self.fetched.emit(read)
         except device.DeviceError as exc:
             self.failed.emit(str(exc))
@@ -336,6 +345,7 @@ class MainWindow(QMainWindow):
         self.last_range: tuple = (None, None)
         self.thread: QThread | None = None
         self.worker: DeviceWorker | None = None
+        self._stop_flag: threading.Event | None = None
 
         self.setWindowTitle(f"{APP_TITLE} {__version__}")
         self.setWindowIcon(app_icon())
@@ -427,6 +437,11 @@ class MainWindow(QMainWindow):
         self.pause_check.setChecked(bool(self.settings["pause_device"]))
         self.pause_check.setToolTip("Only needed if reads fail on this firmware. "
                                    "The terminal is re-enabled automatically.")
+        self.retry_check = QCheckBox("Retry if the terminal is busy or offline")
+        self.retry_check.setChecked(bool(self.settings.get("retry", True)))
+        self.retry_check.setToolTip("Keeps trying for up to 5 minutes: the WL20 refuses new "
+                                    "sessions while the FaceGO server holds its socket, and is "
+                                    "unreachable while it reboots.")
         self.test_button = QPushButton("Test connection")
         self.test_button.clicked.connect(self.on_test)
         # Minimum widths that fit the longest real value on every platform:
@@ -440,6 +455,7 @@ class MainWindow(QMainWindow):
         form.addRow("Password", self.password_spin)
         form.addRow("Timeout", self.timeout_spin)
         form.addRow("", self.pause_check)
+        form.addRow("", self.retry_check)
         form.addRow("", self.test_button)
         layout.addWidget(terminal)
 
@@ -476,6 +492,10 @@ class MainWindow(QMainWindow):
         self.fetch_button = QPushButton("Fetch attendance  (F5)")
         self.fetch_button.setObjectName("Primary")
         self.fetch_button.clicked.connect(self.on_fetch)
+        self.stop_button = QPushButton("Stop")
+        self.stop_button.setEnabled(False)
+        self.stop_button.setToolTip("Abort the fetch that is waiting for the terminal")
+        self.stop_button.clicked.connect(self.on_stop)
         self.export_button = QPushButton("Export to Excel…  (Ctrl+E)")
         self.export_button.setObjectName("Accent")
         self.export_button.setEnabled(False)
@@ -483,7 +503,10 @@ class MainWindow(QMainWindow):
         self.csv_button = QPushButton("Export CSV copy…")
         self.csv_button.setEnabled(False)
         self.csv_button.clicked.connect(self.on_export_csv)
-        actions_layout.addWidget(self.fetch_button)
+        fetch_row = QHBoxLayout()
+        fetch_row.addWidget(self.fetch_button, 1)
+        fetch_row.addWidget(self.stop_button, 0)
+        actions_layout.addLayout(fetch_row)
         actions_layout.addWidget(self.export_button)
         actions_layout.addWidget(self.csv_button)
         layout.addWidget(actions)
@@ -609,6 +632,7 @@ class MainWindow(QMainWindow):
             "password": int(self.password_spin.value()),
             "timeout": int(self.timeout_spin.value()),
             "pause_device": bool(self.pause_check.isChecked()),
+            "retry": bool(self.retry_check.isChecked()),
             "range_preset": self.preset_combo.currentText(),
         })
         try:
@@ -636,8 +660,10 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(busy)
         for widget in (self.fetch_button, self.test_button, self.host_edit,
                        self.port_spin,
-                       self.password_spin, self.timeout_spin, self.pause_check):
+                       self.password_spin, self.timeout_spin, self.pause_check,
+                       self.retry_check):
             widget.setEnabled(not busy)
+        self.stop_button.setEnabled(busy)
         has_data = self.read_result is not None
         self.export_button.setEnabled(not busy and has_data)
         self.csv_button.setEnabled(not busy and has_data)
@@ -760,9 +786,20 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(3)
         self._set_busy(True, "Fetching attendance …")
         self.read_result = None
+        self._stop_flag = threading.Event()
+        retry_seconds = 300.0 if self.retry_check.isChecked() else 0.0
+        if retry_seconds:
+            self.log_line("If the terminal is busy or offline I will keep trying for 5 minutes "
+                          "(Stop cancels).")
         self._start_job("fetch", host=self.host_edit.text().strip(), port=self.port_spin.value(),
                         password=self.password_spin.value(), timeout=self.timeout_spin.value(),
-                        pause_device=self.pause_check.isChecked())
+                        pause_device=self.pause_check.isChecked(),
+                        retry_seconds=retry_seconds, stop_flag=self._stop_flag)
+
+    def on_stop(self) -> None:
+        if self._stop_flag is not None and not self._stop_flag.is_set():
+            self._stop_flag.set()
+            self.log_line("Stop requested — ending the wait …")
 
     @Slot(object)
     def on_tested(self, info) -> None:

@@ -573,3 +573,63 @@ def _cross_check(info: DeviceInfo, users: Sequence[DeviceUser],
         first = min(record.timestamp for record in records)
         last = max(record.timestamp for record in records)
         report.add_note(f"decoded range: {first:%d-%m-%Y %H:%M:%S} .. {last:%d-%m-%Y %H:%M:%S}")
+
+
+def _interruptible_sleep(seconds: float, should_stop=None) -> bool:
+    """Sleep in slices so a Stop request is honoured within a fraction of a second."""
+    end = time.monotonic() + max(0.0, seconds)
+    while True:
+        if should_stop is not None and should_stop():
+            return True
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.25, remaining))
+
+
+def read_with_retry(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, password: int = 0,
+                    timeout: int = DEFAULT_TIMEOUT, attempts: int = 1, delay: float = 30.0,
+                    wait_seconds: float = 0.0, pause_device: bool = False,
+                    progress: ProgressFn = None, log: ProgressFn = None,
+                    should_stop=None) -> DeviceRead:
+    """Read the terminal, retrying while it is busy, offline or rebooting.
+
+    The WL20 refuses new sessions while another client holds its single one and
+    is simply unreachable while it reboots, so a scheduled export has to wait it
+    out instead of failing:
+
+    - ``wait_seconds > 0`` keeps trying until that much time has passed
+      (``attempts`` is then ignored);
+    - otherwise at most ``attempts`` tries are made, ``delay`` seconds apart;
+    - ``should_stop()`` (e.g. the GUI's Stop button) aborts promptly.
+    """
+    say = log if log is not None else (progress or (lambda message: None))
+    deadline = time.monotonic() + wait_seconds if wait_seconds > 0 else None
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            if attempt > 1:
+                say(f"Attempt {attempt} ...")
+            return read_all(host, port=port, password=password, timeout=timeout,
+                            pause_device=pause_device, progress=progress)
+        except DeviceError as exc:
+            first_line = str(exc).splitlines()[0]
+            expired = deadline is not None and time.monotonic() >= deadline
+            exhausted = deadline is None and attempt >= max(1, attempts)
+            if expired or exhausted:
+                say(f"Giving up after {attempt} attempt(s): {first_line}")
+                raise
+            if should_stop is not None and should_stop():
+                raise DeviceError(f"cancelled after {attempt} attempt(s)") from exc
+            wait = delay if deadline is None else min(delay, max(0.0, deadline - time.monotonic()))
+            say(f"Attempt {attempt} failed: {first_line}")
+            if wait <= 0:
+                raise
+            if deadline is not None:
+                say(f"Terminal not ready — retrying in {wait:.0f}s "
+                    f"(waiting up to {max(0.0, deadline - time.monotonic()):.0f}s more)")
+            else:
+                say(f"Retrying in {wait:.0f}s ...")
+            if _interruptible_sleep(wait, should_stop):
+                raise DeviceError(f"cancelled while waiting to retry") from exc

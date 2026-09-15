@@ -83,7 +83,31 @@ wl20-export --test
 Dates are **DD-MM-YYYY** everywhere — in the app, in the Excel columns, in the CSV
 and on the command line (`YYYY-MM-DD` is still accepted).
 
-CLI options: `--host --port --password --timeout --from --to --out --csv --test --verbose`.
+CLI options: `--host --port --password --timeout --from --to --out --csv --test --verbose`
+plus the retry flags below.
+
+## If the terminal is busy, offline or rebooting
+
+The WL20 accepts one session at a time (the FaceGO server normally holds it) and is
+unreachable while it reboots, so an export has to wait it out instead of failing:
+
+- **In the app**: *Retry if the terminal is busy or offline* is on by default. It keeps
+  trying for up to 5 minutes, logging every attempt, and the **Stop** button cancels the
+  wait immediately.
+- **CLI**: `--retries N` (attempts, default 1) with `--retry-delay SECONDS`, or
+  `--wait-for-device SECONDS` to keep trying until that deadline regardless of attempts.
+- **Terminal genuinely wedged?** The FaceGO repo's `scripts/restart_wl20.py` sends the
+  remote reboot command; the app's error message tells you when that is the case.
+
+Unattended daily export on the Jetson (waits up to 10 minutes for the terminal):
+
+```bash
+mkdir -p ~/wl20-exports
+crontab -e     # then add, on one line:
+# 30 18 * * * cd ~/Desktop/wl20-attendance-exporter && .venv/bin/wl20-export --from $(date +\%d-\%m-\%Y) --to $(date +\%d-\%m-\%Y) --wait-for-device 600 --out $HOME/wl20-exports/$(date +\%d-\%m-\%Y).xlsx >> $HOME/wl20-exports/cron.log 2>&1
+```
+
+On Windows the same command works under Task Scheduler.
 
 ## Important: one TCP session per terminal
 

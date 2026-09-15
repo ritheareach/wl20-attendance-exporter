@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from datetime import date, datetime
 from pathlib import Path
@@ -116,6 +117,33 @@ class GuiSmokeTests(unittest.TestCase):
         self.assertTrue(gui.asset_path("icon.png").is_file())
         self.assertFalse(gui.app_icon().isNull(), "the AIFarm icon must ship with the app")
         self.assertFalse(self.window.windowIcon().isNull())
+
+    def test_retry_is_on_by_default_and_stop_cancels(self):
+        self.assertTrue(self.window.retry_check.isChecked(),
+                        "the app should wait out a busy terminal by default")
+        self.assertFalse(self.window.stop_button.isEnabled(), "Stop only matters while working")
+
+        self.window._stop_flag = threading.Event()
+        self.window.on_stop()
+        self.assertTrue(self.window._stop_flag.is_set())
+        self.assertIn("Stop requested", self.window.log_view.toPlainText())
+
+    def test_fetch_asks_the_worker_to_retry(self):
+        self.window.retry_check.setChecked(True)
+        captured = {}
+
+        def capture(job, **kwargs):
+            captured["job"] = job
+            captured.update(kwargs)
+
+        self.window._start_job = capture
+        self.window.on_fetch()
+        self.assertEqual(captured["job"], "fetch")
+        self.assertEqual(captured["retry_seconds"], 300.0)
+        self.assertIsNotNone(captured["stop_flag"])
+        self.assertTrue(self.window.stop_button.isEnabled())
+        self.window._stop_flag = None
+        self.window._set_busy(False)
 
     @staticmethod
     def _dark_text_pixels(image, window, widget, threshold=90):

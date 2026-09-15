@@ -54,6 +54,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="only check connectivity and print device details")
     parser.add_argument("--pause-device", action="store_true",
                         help="briefly disable the terminal while reading (only for stubborn firmware)")
+    parser.add_argument("--retries", type=int, default=1, metavar="N",
+                        help="attempts before giving up when the terminal is busy/offline "
+                             "(default: 1)")
+    parser.add_argument("--retry-delay", type=float, default=30.0, metavar="SECONDS",
+                        help="seconds between attempts (default: 30)")
+    parser.add_argument("--wait-for-device", type=float, default=0.0, metavar="SECONDS",
+                        help="keep retrying for this long instead of giving up after --retries "
+                             "(use it in scheduled exports, e.g. 600 = wait 10 minutes)")
     parser.add_argument("--verbose", action="store_true", help="print read progress")
     parser.add_argument("--version", action="version", version=f"wl20-export {__version__}")
     return parser
@@ -93,9 +101,13 @@ def main(argv=None) -> int:
                 f"records={info.records}/{info.records_cap}")
             return 0
 
-        read = device.read_all(args.host, port=args.port, password=args.password,
-                               timeout=args.timeout, pause_device=args.pause_device,
-                               progress=say if args.verbose else None)
+        read = device.read_with_retry(args.host, port=args.port, password=args.password,
+                                      timeout=args.timeout, pause_device=args.pause_device,
+                                      attempts=max(1, args.retries),
+                                      delay=max(0.0, args.retry_delay),
+                                      wait_seconds=max(0.0, args.wait_for_device),
+                                      progress=say if args.verbose else None,
+                                      log=say)
     except device.DeviceError as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 2
