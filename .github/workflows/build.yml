@@ -73,17 +73,19 @@ jobs:
         run: |
           cd dist
           zip -r -y "WL20-Attendance-Exporter-macos.zip" "WL20 Attendance Exporter.app"
-          shasum -a 256 "WL20-Attendance-Exporter-macos.zip" > SHA256SUMS.txt
+          shasum -a 256 "WL20-Attendance-Exporter-macos.zip" > SHA256SUMS-${{ matrix.artifact }}.txt
 
       - name: Package (Windows / Linux binary)
         if: runner.os != 'macOS'
         shell: bash
         run: |
           cd dist
+          # Per-platform file: all three jobs run in parallel, so a shared
+          # SHA256SUMS.txt would be overwritten by whichever finishes last.
           for file in WL20-Attendance-Exporter*; do
-            echo "$(sha256sum "$file" | cut -d' ' -f1)  $file" >> SHA256SUMS.txt
+            echo "$(sha256sum "$file" | cut -d' ' -f1)  $file" >> "SHA256SUMS-${{ matrix.artifact }}.txt"
           done
-          cat SHA256SUMS.txt
+          cat "SHA256SUMS-${{ matrix.artifact }}.txt"
 
       - name: Upload build
         uses: actions/upload-artifact@v4
@@ -91,7 +93,7 @@ jobs:
           name: ${{ matrix.artifact }}
           path: |
             dist/WL20-Attendance-Exporter*
-            dist/SHA256SUMS.txt
+            dist/SHA256SUMS-*.txt
           if-no-files-found: error
 
       - name: Attach to release
@@ -100,5 +102,5 @@ jobs:
         with:
           files: |
             dist/WL20-Attendance-Exporter*
-            dist/SHA256SUMS.txt
+            dist/SHA256SUMS-*.txt
           generate_release_notes: true
