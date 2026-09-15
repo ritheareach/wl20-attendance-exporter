@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wl20-attendance-exporter"
+version = "1.0.0"
+description = "Download attendance from a ZKTeco WL20 fingerprint terminal and export to Excel (Windows / macOS / Linux)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "pyzk>=0.9",
+    "openpyxl>=3.0",
+    "PySide6>=6.5",
+]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.0"]
+dev = ["pyinstaller>=6.0"]
+
+[project.gui-scripts]
+wl20-attendance = "wl20_exporter.gui:main"
+
+[project.scripts]
+wl20-export = "wl20_exporter.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+wl20_exporter = ["assets/*"]

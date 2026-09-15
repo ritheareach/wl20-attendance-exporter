@@ -1,0 +1,95 @@
+name: build
+
+# Builds the app for Windows, macOS and Linux. Push a tag (v1.0.0) to attach the
+# three builds to a GitHub release; every push/PR also builds and runs the tests.
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: WL20-Attendance-Exporter-windows
+          - os: macos-latest
+            artifact: WL20-Attendance-Exporter-macos
+          - os: ubuntu-latest
+            artifact: WL20-Attendance-Exporter-linux
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -v
+
+      - name: Build the app
+        run: pyinstaller packaging/wl20-exporter.spec --noconfirm
+
+      - name: Verify the frozen app
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            ./"dist/WL20 Attendance Exporter.app/Contents/MacOS/WL20-Attendance-Exporter" --selftest
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            ./dist/WL20-Attendance-Exporter.exe --selftest
+          else
+            ./dist/WL20-Attendance-Exporter --selftest
+          fi
+
+      - name: Package (macOS app bundle)
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          zip -r -y "WL20-Attendance-Exporter-macos.zip" "WL20 Attendance Exporter.app"
+          shasum -a 256 "WL20-Attendance-Exporter-macos.zip" > SHA256SUMS.txt
+
+      - name: Package (Windows / Linux binary)
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          cd dist
+          for file in WL20-Attendance-Exporter*; do
+            echo "$(sha256sum "$file" | cut -d' ' -f1)  $file" >> SHA256SUMS.txt
+          done
+          cat SHA256SUMS.txt
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/WL20-Attendance-Exporter*
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/WL20-Attendance-Exporter*
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
