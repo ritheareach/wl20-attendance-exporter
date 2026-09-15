@@ -252,8 +252,25 @@ class GuiSmokeTests(unittest.TestCase):
         self.window.summary_view.sortByColumn(5, Qt.DescendingOrder)
         proxy = self.window.summary_proxy
         hours = [proxy.index(row, 5).data() for row in range(proxy.rowCount())]
-        self.assertEqual(hours, ["10.00", "9.52"])
+        self.assertEqual(hours, ["10h00mn", "9h31mn"])
         self.assertEqual(proxy.index(0, 2).data(), "Ngoun Kimly")
+
+    def test_summary_matches_the_exported_columns(self):
+        from wl20_exporter import gui
+
+        self.assertEqual(gui.SummaryModel.HEADERS,
+                         ["Date", "Staff ID", "Staff Name", "First check-in",
+                          "Last check-out", "Total hours", "Punches", "Status"])
+        self.window.preset_combo.setCurrentText("All records")
+        self.window.on_fetched(sample_read())
+        row = [self.window.summary_model.index(0, column).data()
+               for column in range(self.window.summary_model.columnCount())]
+        # sample_read()'s newest day is a single-punch day for STF-0002.
+        self.assertEqual(row[0], "15-09-2026")
+        self.assertEqual(row[3], "08:12")
+        self.assertEqual(row[4], "", "no check-out yet")
+        self.assertEqual(row[5], "", "no hours yet")
+        self.assertEqual(row[7], "Present")
 
     def test_date_range_filters_records(self):
         read = sample_read()
@@ -296,7 +313,19 @@ class GuiSmokeTests(unittest.TestCase):
         filtered = self.window.read_result.filtered(*self.window.last_range)
         target = Path(self.tmp.name) / "gui_export.xlsx"
         excel.export_workbook(target, filtered, *self.window.last_range)
-        self.assertEqual(load_workbook(target)["Attendance"].max_row, 4)
+        workbook = load_workbook(target)
+        # All sample records are on one day, so there is a single day sheet.
+        self.assertEqual(workbook.sheetnames, ["15-09-2026"])
+        sheet = workbook["15-09-2026"]
+        self.assertEqual([cell.value for cell in sheet[1]],
+                         ["No.", "Staff ID", "Staff Name", "First Check-in",
+                          "Last Check-out", "Total Hours", "Status"])
+        self.assertEqual(sheet.max_row, 3, "header + two people")
+        # Sorted by staff id: STF-0002 (single punch) then STF-0001 (in and out).
+        self.assertEqual(sheet.cell(row=2, column=2).value, "STF-0002")
+        self.assertEqual(sheet.cell(row=2, column=7).value, "Present")
+        self.assertEqual(sheet.cell(row=3, column=2).value, "STF-0001")
+        self.assertEqual(sheet.cell(row=3, column=7).value, "Completed")
 
 
 if __name__ == "__main__":

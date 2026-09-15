@@ -61,6 +61,25 @@ class DailySummaryTests(unittest.TestCase):
         self.assertEqual(totals["single_punch"], 1)
         self.assertTrue(all(row.name for row in build_daily_rows(records)))
 
+    def test_hours_and_status_read_like_the_office_log(self):
+        completed = build_daily_rows(punches("STF-0001", "SOK Dara",
+                                             datetime(2026, 9, 15, 7, 39, 0),
+                                             datetime(2026, 9, 15, 16, 58, 0)))[0]
+        self.assertEqual(completed.hours_text, "9h19mn")
+        self.assertEqual(completed.status_text, "Completed")
+        self.assertTrue(completed.has_checkout)
+
+        short = build_daily_rows(punches("STF-0003", "LY Panha",
+                                         datetime(2026, 9, 15, 7, 47, 0),
+                                         datetime(2026, 9, 15, 7, 55, 0)))[0]
+        self.assertEqual(short.hours_text, "0h08mn")
+
+        open_day = build_daily_rows(punches("UAV-0005", "SOK Vibol",
+                                            datetime(2026, 9, 15, 7, 40, 0)))[0]
+        self.assertEqual(open_day.status_text, "Present")
+        self.assertFalse(open_day.has_checkout)
+        self.assertEqual(open_day.hours_text, "0h00mn")
+
 
 if __name__ == "__main__":
     unittest.main()

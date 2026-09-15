@@ -129,12 +129,19 @@ Windows taskbar, the macOS dock and Linux window lists alike.
 
 ## Excel output
 
-| Sheet | Contents |
-| --- | --- |
-| `Attendance` | Date, Time, Staff ID, Name, Device user ID, Status, Punch, UID |
-| `Daily Summary` | Per person per day: first check-in, last check-out, hours, punch count |
-| `Device Info` | Device name, serial, firmware, export range, record counts, app version |
-| `Diagnostics` | Which parse format decoded the data, raw sizes, warnings |
+The workbook mirrors the office **FaceGO attendance log** (`.recording_log/<Month>_<Year>_attendance.xlsx`):
+one sheet per day, named DD-MM-YYYY, newest day first, with the same seven columns:
+
+| No. | Staff ID | Staff Name | First Check-in | Last Check-out | Total Hours | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+
+- Times are **HH:MM**, hours read like the log (`9h31mn`), and a day with no check-out
+  yet leaves the last check-out and the hours blank and reads **Present** (otherwise
+  **Completed**).
+- Header style is the office palette (white on `#366092`); nothing else is decorated.
+- `--punches` adds a raw punch-list sheet per day (the export's equivalent of FaceGO's
+  `_raw_log.xlsx`), `--details` adds the Device Info and Diagnostics sheets used for
+  troubleshooting. Both are off by default.
 
 ## Tests
 

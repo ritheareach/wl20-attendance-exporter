@@ -1,11 +1,11 @@
-"""Excel/CSV export tests — the workbook must be openable and complete."""
+"""Excel/CSV export tests — the workbook must match the FaceGO log layout."""
 
 from __future__ import annotations
 
 import sys
 import tempfile
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -23,6 +23,7 @@ from wl20_exporter.models import (  # noqa: E402
 
 
 def sample_read() -> DeviceRead:
+    """Two days: a completed day (check-in + check-out) and an open one."""
     records = [
         PunchRecord(user_id="STF-0001", name="SOK Dara", uid=1,
                     timestamp=datetime(2026, 9, 14, 8, 1, 5), punch=0, status=1),
@@ -33,7 +34,7 @@ def sample_read() -> DeviceRead:
     ]
     report = ParseReport(format_label="40-byte records", declared_bytes=120,
                          received_bytes=120, raw_records_read=3, users_parsed=2,
-                         notes=["decoded range: 2026-09-14 08:01:05 .. 2026-09-15 08:12:30"])
+                         notes=["decoded range: 14-09-2026 08:01:05 .. 15-09-2026 08:12:30"])
     return DeviceRead(
         info=DeviceInfo(host="192.168.88.245", port=4370, name="WL20",
                         serial="A5KN203360148", firmware="Ver 6.60", users=2, records=3),
@@ -53,57 +54,84 @@ class WorkbookTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_workbook_structure(self):
-        written = excel.export_workbook(self.path, sample_read(),
-                                        date(2026, 9, 14), date(2026, 9, 15))
-        self.assertTrue(written.is_file())
-        workbook = load_workbook(written)
-        self.assertEqual(workbook.sheetnames,
-                         ["Attendance", "Daily Summary", "Device Info", "Diagnostics"])
-
-        sheet = workbook["Attendance"]
-        headers = [cell.value for cell in sheet[1]]
-        self.assertEqual(len(headers), 10)
-        self.assertIn("Date (កាលបរិច្ឆេទ)", headers)
-        self.assertEqual(sheet.max_row, 4, "header + 3 records")
-        self.assertEqual(sheet.cell(row=2, column=4).value, "STF-0001")
-        self.assertEqual(sheet.cell(row=2, column=5).value, "SOK Dara")
-        self.assertEqual(sheet.cell(row=2, column=7).value, "Check In")
-        self.assertEqual(sheet.cell(row=4, column=7).value, "Check In")
-        self.assertEqual(sheet.cell(row=2, column=2).value.date(), date(2026, 9, 14))
-        self.assertEqual(sheet.cell(row=2, column=2).number_format, "dd-mm-yyyy",
-                         "dates must display as DD-MM-YYYY")
-
-    def test_summary_sheet_has_first_last_and_total(self):
-        excel.export_workbook(self.path, sample_read())
-        sheet = load_workbook(self.path)["Daily Summary"]
-        self.assertEqual(sheet.cell(row=1, column=1).value, "No.")
-        # 3 rows of data: two days for STF-0001/STF-0002
-        self.assertEqual(sheet.cell(row=2, column=3).value, "STF-0001")
-        self.assertEqual(sheet.cell(row=2, column=7).value, 9.48)
-        self.assertEqual(sheet.cell(row=2, column=8).value, 2)
-        self.assertEqual(sheet.cell(row=3, column=4).value, "CHHIM Sokha")
-        self.assertEqual(sheet.cell(row=3, column=9).value, "single punch only")
-        totals_row = 4  # 2 person-days + header
-        self.assertEqual(sheet.cell(row=totals_row, column=1).value, "TOTAL")
-        self.assertIn("2 staff", sheet.cell(row=totals_row, column=4).value)
-
-    def test_device_and_diagnostics_sheets(self):
-        excel.export_workbook(self.path, sample_read())
+    def test_one_sheet_per_day_newest_first(self):
+        excel.export_workbook(self.path, sample_read(), date(2026, 9, 14), date(2026, 9, 15))
         workbook = load_workbook(self.path)
-        info_values = [cell.value for row in workbook["Device Info"].iter_rows()
-                       for cell in row]
+        self.assertEqual(workbook.sheetnames, ["15-09-2026", "14-09-2026"])
+
+    def test_columns_match_the_facego_log(self):
+        excel.export_workbook(self.path, sample_read())
+        sheet = load_workbook(self.path)["14-09-2026"]
+        headers = [cell.value for cell in sheet[1]]
+        self.assertEqual(headers, ["No.", "Staff ID", "Staff Name", "First Check-in",
+                                   "Last Check-out", "Total Hours", "Status"])
+        row = [sheet.cell(row=2, column=column).value for column in range(1, 8)]
+        self.assertEqual(row[0], 1)
+        self.assertEqual(row[1], "STF-0001")
+        self.assertEqual(row[2], "SOK Dara")
+        self.assertEqual(row[3], time(8, 1, 5))
+        self.assertEqual(row[4], time(17, 30, 0))
+        self.assertEqual(row[5], "9h28mn")
+        self.assertEqual(row[6], "Completed")
+        self.assertEqual(sheet.cell(row=2, column=4).number_format, "hh:mm",
+                         "times must read HH:MM like the office log")
+
+    def test_open_day_stays_blank_and_reads_present(self):
+        excel.export_workbook(self.path, sample_read())
+        sheet = load_workbook(self.path)["15-09-2026"]
+        row = [sheet.cell(row=2, column=column).value for column in range(1, 8)]
+        self.assertEqual(row[3], time(8, 12, 30))
+        self.assertIsNone(row[4], "no check-out yet")
+        self.assertIsNone(row[5], "no hours to report yet")
+        self.assertEqual(row[6], "Present")
+
+    def test_header_style_matches_the_office_palette(self):
+        excel.export_workbook(self.path, sample_read())
+        cell = load_workbook(self.path)["14-09-2026"].cell(row=1, column=2)
+        self.assertTrue(cell.font.bold)
+        self.assertTrue(cell.font.color.rgb.endswith("FFFFFF"))
+        self.assertTrue(cell.fill.fgColor.rgb.endswith("366092"))
+
+    def test_punch_sheets_only_when_requested(self):
+        excel.export_workbook(self.path, sample_read())
+        self.assertEqual([name for name in load_workbook(self.path).sheetnames
+                          if "punches" in name], [])
+
+        excel.export_workbook(self.path, sample_read(), include_punches=True)
+        workbook = load_workbook(self.path)
+        self.assertEqual(workbook.sheetnames, ["15-09-2026 punches", "15-09-2026",
+                                               "14-09-2026 punches", "14-09-2026"])
+        sheet = workbook["14-09-2026 punches"]
+        self.assertEqual([cell.value for cell in sheet[1]],
+                         ["No.", "Staff ID", "Staff Name", "Timestamp", "Punch"])
+        self.assertEqual(sheet.cell(row=2, column=4).value, datetime(2026, 9, 14, 8, 1, 5))
+        self.assertEqual(sheet.cell(row=2, column=5).value, "Check In")
+
+    def test_details_sheets_only_when_requested(self):
+        excel.export_workbook(self.path, sample_read())
+        self.assertNotIn("Device Info", load_workbook(self.path).sheetnames)
+
+        excel.export_workbook(self.path, sample_read(), include_details=True)
+        workbook = load_workbook(self.path)
+        self.assertIn("Device Info", workbook.sheetnames)
+        self.assertIn("Diagnostics", workbook.sheetnames)
+        info_values = [cell.value for row in workbook["Device Info"].iter_rows() for cell in row]
         self.assertIn("A5KN203360148", info_values)
-        self.assertIn("WL20 Attendance Exporter", info_values)
         diag = [cell.value for row in workbook["Diagnostics"].iter_rows() for cell in row]
         self.assertIn("40-byte records", diag)
         self.assertIn("none", diag)  # no warnings
 
-    def test_empty_read_still_writes_a_workbook(self):
+    def test_empty_read_still_writes_a_readable_workbook(self):
         empty = DeviceRead(info=DeviceInfo(host="10.0.0.9"), report=ParseReport())
         excel.export_workbook(self.path, empty)
-        workbook = load_workbook(self.path)
-        self.assertEqual(workbook["Attendance"].max_row, 1)
+        sheet = load_workbook(self.path)["Attendance"]
+        self.assertEqual([cell.value for cell in sheet[1]], excel.DAY_HEADERS)
+        self.assertIn("No attendance records", sheet.cell(row=2, column=1).value)
+
+    def test_sheet_names_use_dd_mm_yyyy(self):
+        excel.export_workbook(self.path, sample_read())
+        for name in load_workbook(self.path).sheetnames:
+            self.assertRegex(name, r"^\d{2}-\d{2}-\d{4}$")
 
 
 class CsvTests(unittest.TestCase):

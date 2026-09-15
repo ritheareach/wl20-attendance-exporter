@@ -166,7 +166,22 @@ class DailyRow:
     last_out: Optional[datetime] = None
     punches: int = 0
     hours: float = 0.0
+    minutes: int = 0
 
     @property
     def single_punch(self) -> bool:
         return self.punches <= 1
+
+    @property
+    def hours_text(self) -> str:
+        """Hours the way the office log writes them: 9h19mn, 0h07mn."""
+        return f"{self.minutes // 60}h{self.minutes % 60:02d}mn"
+
+    @property
+    def has_checkout(self) -> bool:
+        return self.punches > 1
+
+    @property
+    def status_text(self) -> str:
+        """Present = one punch (no check-out yet), Completed = in and out."""
+        return "Completed" if self.punches > 1 else "Present"

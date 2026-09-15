@@ -36,9 +36,12 @@ def build_daily_rows(records: Iterable[PunchRecord], default_name: str = "") -> 
     rows = list(buckets.values())
     for row in rows:
         if row.first_in and row.last_out and row.last_out > row.first_in:
-            row.hours = round((row.last_out - row.first_in).total_seconds() / 3600.0, 2)
+            seconds = (row.last_out - row.first_in).total_seconds()
+            row.hours = round(seconds / 3600.0, 2)
+            row.minutes = int(seconds // 60)
         else:
             row.hours = 0.0
+            row.minutes = 0
     rows.sort(key=lambda item: (item.day, _user_sort_key(item.user_id)))
     return rows
 

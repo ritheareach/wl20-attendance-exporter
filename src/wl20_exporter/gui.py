@@ -212,8 +212,9 @@ class RecordsModel(QAbstractTableModel):
 
 
 class SummaryModel(QAbstractTableModel):
-    HEADERS = ["Date", "Staff ID", "Name", "First in", "Last out", "Hours",
-               "Punches", "Note"]
+    # Mirrors the exported workbook (one sheet per day, FaceGO column set).
+    HEADERS = ["Date", "Staff ID", "Staff Name", "First check-in", "Last check-out",
+               "Total hours", "Punches", "Status"]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -257,7 +258,7 @@ class SummaryModel(QAbstractTableModel):
                 return row.hours
             if column == 6:
                 return row.punches
-            return 1 if row.single_punch else 0
+            return row.punches  # Present before Completed
         if role == Qt.DisplayRole:
             if column == 0:
                 return row.day.strftime("%d-%m-%Y")
@@ -266,17 +267,25 @@ class SummaryModel(QAbstractTableModel):
             if column == 2:
                 return row.name
             if column == 3:
-                return row.first_in.strftime("%H:%M:%S") if row.first_in else ""
+                return row.first_in.strftime("%H:%M") if row.first_in else ""
             if column == 4:
-                return row.last_out.strftime("%H:%M:%S") if row.last_out else ""
+                if not row.has_checkout or not row.last_out:
+                    return ""
+                return row.last_out.strftime("%H:%M")
             if column == 5:
-                return f"{row.hours:.2f}"
+                # Blank for a day that is still open, exactly like the workbook.
+                return row.hours_text if row.has_checkout else ""
             if column == 6:
                 return row.punches
             if column == 7:
-                return "single punch only" if row.single_punch else ""
+                return row.status_text
         if role == Qt.TextAlignmentRole and column in (0, 3, 4, 5, 6):
             return int(Qt.AlignCenter)
+        if role == Qt.ToolTipRole:
+            return (f"{row.name or row.user_id}\n{row.day:%d-%m-%Y}\n"
+                    f"first {row.first_in:%H:%M} · last "
+                    + (f"{row.last_out:%H:%M}" if row.has_checkout and row.last_out else "-")
+                    + f" · {row.hours_text} · {row.status_text}")
         return None
 
 
@@ -330,8 +339,8 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(f"{APP_TITLE} {__version__}")
         self.setWindowIcon(app_icon())
-        self.resize(1180, 760)
-        self.setMinimumSize(980, 620)
+        self.resize(1280, 780)
+        self.setMinimumSize(1000, 640)
 
         self._build_ui()
         self._build_shortcuts()

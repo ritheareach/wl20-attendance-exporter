@@ -1,8 +1,16 @@
 """Excel (.xlsx) and CSV export.
 
-Layout matches the palette of the office's existing attendance reports
-(Arial, white-on-#366092 headers) and carries bilingual Khmer + English
-column headers because HR reads the Khmer first.
+The workbook mirrors the layout of the office's FaceGO attendance log
+(`.recording_log/<Month>_<Year>_attendance.xlsx`): one sheet per day named
+DD-MM-YYYY, newest first, with the same seven columns — No., Staff ID,
+Staff Name, First Check-in, Last Check-out, Total Hours, Status — the same
+header style (white on #366092) and the same column widths. Times are HH:MM
+and hours read "9h19mn", exactly like that log, so HR reads both files the
+same way.
+
+Optional extras (off by default) keep the tool useful for troubleshooting:
+`include_punches` adds the raw punch list per day (FaceGO's "raw log"
+equivalent) and `include_details` adds the Device Info and Diagnostics sheets.
 """
 
 from __future__ import annotations
@@ -13,50 +21,33 @@ from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from . import __version__
 from .models import DailyRow, DeviceRead, PunchRecord
 from .summary import build_daily_rows, summary_totals
 
+# Same palette as the FaceGO log and the other office reports.
 HEADER_FILL = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
 HEADER_FONT = Font(name="Arial", size=12, bold=True, color="FFFFFF")
 TITLE_FONT = Font(name="Arial", size=12, bold=True, color="366092")
 DATA_FONT = Font(name="Arial", size=10)
 BOLD_FONT = Font(name="Arial", size=10, bold=True)
-TOTAL_FILL = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
 WARN_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
-THIN = Side(style="thin", color="BFBFBF")
-BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
-
-DATE_FMT = "dd-mm-yyyy"
-TIME_FMT = "hh:mm:ss"
-DATETIME_FMT = "dd-mm-yyyy hh:mm:ss"
 
 CENTER = Alignment(horizontal="center", vertical="center")
 LEFT = Alignment(horizontal="left", vertical="center")
 
-# Bilingual column labels: English (Khmer).
-L = {
-    "index": "No.",
-    "date": "Date (កាលបរិច្ឆេទ)",
-    "time": "Time (ម៉ោង)",
-    "staff_id": "Staff ID (លេខកូដបុគ្គលិក)",
-    "name": "Name (ឈ្មោះ)",
-    "device_user": "Device User ID (លេខអ្នកប្រើលើម៉ាស៊ីន)",
-    "punch": "Punch (ចលនា)",
-    "verify": "Verified By (វិធីផ្ទៀងផ្ទាត់)",
-    "uid": "UID",
-    "first_in": "First Check-In (ចូលដំបូង)",
-    "last_out": "Last Check-Out (ចេញចុងក្រោយ)",
-    "hours": "Hours (ម៉ោងសរុប)",
-    "punches": "Punches (ចំនួនស្កេន)",
-    "note": "Note (កំណត់សម្គាល់)",
-    "device": "Device (ឧបករណ៍)",
-}
+TIME_FMT = "hh:mm"
+DATE_FMT = "dd-mm-yyyy"
 
-DEFAULT_SHEET = "Attendance"
+# Column sets + widths copied from the FaceGO log.
+DAY_HEADERS = ["No.", "Staff ID", "Staff Name", "First Check-in", "Last Check-out",
+               "Total Hours", "Status"]
+DAY_WIDTHS = [5, 13, 22, 16, 16, 13, 12]
+PUNCH_HEADERS = ["No.", "Staff ID", "Staff Name", "Timestamp", "Punch"]
+PUNCH_WIDTHS = [5, 13, 22, 21, 12]
 
 
 def _style_header(sheet, row: int, headers: Sequence[str]) -> None:
@@ -65,8 +56,7 @@ def _style_header(sheet, row: int, headers: Sequence[str]) -> None:
         cell.font = HEADER_FONT
         cell.fill = HEADER_FILL
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        cell.border = BORDER
-    sheet.row_dimensions[row].height = 30
+    sheet.row_dimensions[row].height = 26
 
 
 def _autosize(sheet, widths: Sequence[int]) -> None:
@@ -85,114 +75,86 @@ def _setup_print(sheet, landscape: bool = True, repeat_header: bool = False) -> 
         sheet.print_title_rows = "1:1"
 
 
-def _write_records_sheet(sheet, records: Sequence[PunchRecord], device_label: str) -> None:
-    headers = [L["index"], L["date"], L["time"], L["staff_id"], L["name"],
-               L["device_user"], L["punch"], L["verify"], L["uid"], L["device"]]
-    _style_header(sheet, 1, headers)
+def sheet_name(day: date) -> str:
+    """Day sheets are named DD-MM-YYYY, like every other date we show."""
+    return day.strftime("%d-%m-%Y")
+
+
+def _write_day_sheet(sheet, rows: Sequence[DailyRow]) -> None:
+    """One day of attendance — the same seven columns as the FaceGO log."""
+    _style_header(sheet, 1, DAY_HEADERS)
+    sheet.freeze_panes = "A2"
+    for position, row in enumerate(rows, start=1):
+        line = position + 1
+        sheet.cell(row=line, column=1, value=position).font = DATA_FONT
+        sheet.cell(row=line, column=2, value=row.user_id).font = DATA_FONT
+        sheet.cell(row=line, column=3, value=row.name or "").font = DATA_FONT
+        if row.first_in:
+            first = sheet.cell(row=line, column=4, value=row.first_in.time())
+            first.number_format = TIME_FMT
+            first.font = DATA_FONT
+        # Like the FaceGO log: a day with no check-out yet leaves the last
+        # check-out and the total hours blank and reads "Present".
+        if row.last_out and row.has_checkout:
+            last = sheet.cell(row=line, column=5, value=row.last_out.time())
+            last.number_format = TIME_FMT
+            last.font = DATA_FONT
+            sheet.cell(row=line, column=6, value=row.hours_text).font = DATA_FONT
+        sheet.cell(row=line, column=7, value=row.status_text).font = DATA_FONT
+        for column in (1, 4, 5, 6, 7):
+            sheet.cell(row=line, column=column).alignment = CENTER
+    _autosize(sheet, DAY_WIDTHS)
+    _setup_print(sheet, landscape=True, repeat_header=True)
+
+
+def _write_punch_sheet(sheet, records: Sequence[PunchRecord]) -> None:
+    """Raw punch list for a day — the exporter's raw-log equivalent."""
+    _style_header(sheet, 1, PUNCH_HEADERS)
+    sheet.freeze_panes = "A2"
     for position, record in enumerate(records, start=1):
-        row = position + 1
-        sheet.cell(row=row, column=1, value=position).font = DATA_FONT
-        date_cell = sheet.cell(row=row, column=2, value=record.timestamp.date())
-        date_cell.number_format = DATE_FMT
-        time_cell = sheet.cell(row=row, column=3, value=record.timestamp.time())
-        time_cell.number_format = TIME_FMT
-        sheet.cell(row=row, column=4, value=record.user_id).font = DATA_FONT
-        sheet.cell(row=row, column=5, value=record.name or "").font = DATA_FONT
-        sheet.cell(row=row, column=6, value=record.device_user_id).font = DATA_FONT
-        sheet.cell(row=row, column=7, value=record.punch_text).font = DATA_FONT
-        sheet.cell(row=row, column=8, value=record.verify_text).font = DATA_FONT
-        sheet.cell(row=row, column=9, value=record.uid).font = DATA_FONT
-        sheet.cell(row=row, column=10, value=device_label).font = DATA_FONT
-        for column in range(1, len(headers) + 1):
-            cell = sheet.cell(row=row, column=column)
-            cell.border = BORDER
-            cell.alignment = CENTER if column in (1, 2, 3, 7, 8, 9) else LEFT
-    _autosize(sheet, [6, 13, 11, 18, 30, 24, 14, 16, 8, 26])
-    sheet.freeze_panes = "A2"
+        line = position + 1
+        sheet.cell(row=line, column=1, value=position).font = DATA_FONT
+        sheet.cell(row=line, column=2, value=record.user_id).font = DATA_FONT
+        sheet.cell(row=line, column=3, value=record.name or "").font = DATA_FONT
+        stamp = sheet.cell(row=line, column=4, value=record.timestamp)
+        stamp.number_format = "dd-mm-yyyy hh:mm:ss"
+        stamp.font = DATA_FONT
+        sheet.cell(row=line, column=5, value=record.punch_text).font = DATA_FONT
+        sheet.cell(row=line, column=1).alignment = CENTER
+    _autosize(sheet, PUNCH_WIDTHS)
     _setup_print(sheet, landscape=True, repeat_header=True)
-    if records:
-        sheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(records) + 1}"
-
-
-def _write_summary_sheet(sheet, rows: Sequence[DailyRow]) -> None:
-    headers = [L["index"], L["date"], L["staff_id"], L["name"], L["first_in"],
-               L["last_out"], L["hours"], L["punches"], L["note"]]
-    _style_header(sheet, 1, headers)
-    for position, row_data in enumerate(rows, start=1):
-        row = position + 1
-        sheet.cell(row=row, column=1, value=position).font = DATA_FONT
-        date_cell = sheet.cell(row=row, column=2, value=row_data.day)
-        date_cell.number_format = DATE_FMT
-        sheet.cell(row=row, column=3, value=row_data.user_id).font = DATA_FONT
-        sheet.cell(row=row, column=4, value=row_data.name or "").font = DATA_FONT
-        if row_data.first_in:
-            first_cell = sheet.cell(row=row, column=5, value=row_data.first_in)
-            first_cell.number_format = TIME_FMT
-        if row_data.last_out:
-            last_cell = sheet.cell(row=row, column=6, value=row_data.last_out)
-            last_cell.number_format = TIME_FMT
-        hours_cell = sheet.cell(row=row, column=7, value=row_data.hours)
-        hours_cell.number_format = "0.00"
-        sheet.cell(row=row, column=8, value=row_data.punches).font = DATA_FONT
-        note_cell = sheet.cell(row=row, column=9,
-                               value="single punch only" if row_data.single_punch else "")
-        note_cell.font = DATA_FONT
-        if row_data.single_punch:
-            note_cell.fill = WARN_FILL
-        for column in range(1, len(headers) + 1):
-            cell = sheet.cell(row=row, column=column)
-            cell.border = BORDER
-            cell.alignment = CENTER if column in (1, 2, 5, 6, 7, 8) else LEFT
-
-    totals = summary_totals(rows)
-    total_row = len(rows) + 2
-    sheet.cell(row=total_row, column=1, value="TOTAL").font = BOLD_FONT
-    sheet.cell(row=total_row, column=4,
-               value=f"{totals['people']} staff / {totals['days']} day(s)").font = BOLD_FONT
-    hours_cell = sheet.cell(row=total_row, column=7, value=totals["hours"])
-    hours_cell.font = BOLD_FONT
-    hours_cell.number_format = "0.00"
-    sheet.cell(row=total_row, column=8, value=sum(row.punches for row in rows)).font = BOLD_FONT
-    if totals["single_punch"]:
-        sheet.cell(row=total_row, column=9,
-                   value=f"{totals['single_punch']} day(s) with a single punch").font = BOLD_FONT
-    for column in range(1, len(headers) + 1):
-        sheet.cell(row=total_row, column=column).fill = TOTAL_FILL
-        sheet.cell(row=total_row, column=column).border = BORDER
-
-    _autosize(sheet, [6, 13, 18, 30, 20, 20, 12, 14, 26])
-    sheet.freeze_panes = "A2"
-    _setup_print(sheet, landscape=True, repeat_header=True)
-    if rows:
-        sheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(rows) + 1}"
 
 
 def _write_info_sheet(sheet, read: DeviceRead, start: Optional[date], end: Optional[date],
                       record_count: int) -> None:
     info = read.info
+    if start and end:
+        span = f"{start:%d-%m-%Y} .. {end:%d-%m-%Y}"
+    elif start:
+        span = f"from {start:%d-%m-%Y}"
+    elif end:
+        span = f"until {end:%d-%m-%Y}"
+    else:
+        span = "everything on the terminal"
     pairs = [
-        ("Report (របាយការណ៍)", "WL20 Attendance Exporter"),
-        ("Exported at (នាំចេញនៅ)", datetime.now().strftime("%d-%m-%Y %H:%M:%S")),
+        ("Report", "WL20 Attendance Exporter"),
+        ("Exported at", datetime.now().strftime("%d-%m-%Y %H:%M:%S")),
         ("App version", __version__),
-        ("Device name (ឈ្មោះឧបករណ៍)", info.name or "-"),
-        ("Serial number (លេខសៀរៀល)", info.serial or "-"),
-        ("Firmware (កម្មវិធីបង្កប់)", info.firmware or "-"),
-        ("Address (អាសយដ្ឋាន)", f"{info.host}:{info.port}"),
-        ("Users on terminal (អ្នកប្រើលើម៉ាស៊ីន)", len(read.users)),
-        ("Records decoded (កំណត់ត្រាដែលអានបាន)", len(read.records)),
-        ("Records exported (កំណត់ត្រាបាននាំចេញ)", record_count),
+        ("Device name", info.name or "-"),
+        ("Serial number", info.serial or "-"),
+        ("Firmware", info.firmware or "-"),
+        ("Address", f"{info.host}:{info.port}"),
+        ("Users on terminal", len(read.users)),
+        ("Records decoded", len(read.records)),
+        ("Records exported", record_count),
         ("Read duration (s)", read.duration_seconds),
-        ("Date range (ចន្លោះកាលបរិច្ឆេទ)",
-         f"{start:%d-%m-%Y} .. {end:%d-%m-%Y}" if start and end else
-         (f"from {start:%d-%m-%Y}" if start else
-          (f"until {end:%d-%m-%Y}" if end else "everything on the terminal"))),
+        ("Date range", span),
         ("Decoded format", read.report.format_label),
     ]
     for position, (key, value) in enumerate(pairs, start=1):
-        key_cell = sheet.cell(row=position, column=1, value=key)
-        key_cell.font = BOLD_FONT
+        sheet.cell(row=position, column=1, value=key).font = BOLD_FONT
         sheet.cell(row=position, column=2, value=value).font = DATA_FONT
-    _autosize(sheet, [42, 46])
+    _autosize(sheet, [22, 46])
     _setup_print(sheet, landscape=False)
 
 
@@ -235,27 +197,46 @@ def _write_diagnostics_sheet(sheet, read: DeviceRead) -> None:
     else:
         row += 1
         sheet.cell(row=row, column=1, value="none").font = DATA_FONT
-    _autosize(sheet, [40, 70])
+    _autosize(sheet, [38, 70])
     _setup_print(sheet, landscape=False)
 
 
 def export_workbook(path, read: DeviceRead, start: Optional[date] = None,
-                    end: Optional[date] = None) -> Path:
-    """Write the four-sheet attendance workbook and return its path."""
+                    end: Optional[date] = None, include_punches: bool = False,
+                    include_details: bool = False) -> Path:
+    """Write the attendance workbook (one sheet per day) and return its path."""
     path = Path(path)
     records = list(read.records)
     rows = build_daily_rows(records)
 
+    by_day: dict = {}
+    for row in rows:
+        by_day.setdefault(row.day, []).append(row)
+    punches_by_day: dict = {}
+    for record in records:
+        punches_by_day.setdefault(record.day, []).append(record)
+
     workbook = Workbook()
-    device_label = read.info.name or read.info.serial or read.info.host or "WL20"
+    workbook.remove(workbook.active)
 
-    sheet = workbook.active
-    sheet.title = DEFAULT_SHEET
-    _write_records_sheet(sheet, records, device_label)
+    for day in sorted(by_day, reverse=True):  # newest day first, like the FaceGO log
+        day_rows = by_day[day]
+        if include_punches:
+            sheet = workbook.create_sheet(sheet_name(day) + " punches")
+            _write_punch_sheet(sheet, punches_by_day.get(day, []))
+        sheet = workbook.create_sheet(sheet_name(day))
+        _write_day_sheet(sheet, day_rows)
 
-    _write_summary_sheet(workbook.create_sheet("Daily Summary"), rows)
-    _write_info_sheet(workbook.create_sheet("Device Info"), read, start, end, len(records))
-    _write_diagnostics_sheet(workbook.create_sheet("Diagnostics"), read)
+    if not workbook.sheetnames:  # nothing in range: still produce a readable file
+        sheet = workbook.create_sheet("Attendance")
+        _style_header(sheet, 1, DAY_HEADERS)
+        _autosize(sheet, DAY_WIDTHS)
+        sheet.cell(row=2, column=1,
+                   value="No attendance records in the selected range").font = DATA_FONT
+
+    if include_details:
+        _write_info_sheet(workbook.create_sheet("Device Info"), read, start, end, len(records))
+        _write_diagnostics_sheet(workbook.create_sheet("Diagnostics"), read)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     workbook.save(path)
@@ -296,3 +277,9 @@ def default_filename(start: Optional[date], end: Optional[date]) -> str:
     else:
         span = "all"
     return f"WL20_Attendance_{span}_{stamp}.xlsx"
+
+
+def workbook_summary(rows: Sequence[DailyRow]) -> dict:
+    """Small helper used by the CLI to report what was written."""
+    totals = summary_totals(rows)
+    return {"days": len({row.day for row in rows}), **totals}

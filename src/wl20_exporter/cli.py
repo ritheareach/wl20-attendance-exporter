@@ -8,6 +8,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from . import __version__, device, excel
+from .summary import build_daily_rows
 
 
 def parse_day(value: str) -> date:
@@ -43,6 +44,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Excel output path (default: WL20_Attendance_<range>.xlsx)")
     parser.add_argument("--csv", type=Path, metavar="FILE.csv",
                         help="also write a CSV copy of the raw records")
+    parser.add_argument("--punches", action="store_true",
+                        help="add a raw punch-list sheet for each day")
+    parser.add_argument("--details", action="store_true",
+                        help="add the Device Info and Diagnostics sheets (troubleshooting)")
     parser.add_argument("--limit", type=int, default=10,
                         help="how many records to print on the console (default: 10, 0 = all)")
     parser.add_argument("--test", action="store_true",
@@ -106,11 +111,23 @@ def main(argv=None) -> int:
     if args.out is None:
         out = Path.cwd() / out.name
     try:
-        written = excel.export_workbook(out, filtered, args.start, args.end)
+        written = excel.export_workbook(out, filtered, args.start, args.end,
+                                        include_punches=args.punches,
+                                        include_details=args.details)
     except OSError as exc:
         print(f"FAILED to write Excel file: {exc}", file=sys.stderr)
         return 3
     print(f"Excel written: {written}")
+
+    rows = build_daily_rows(filtered.records)
+    if rows:
+        totals = excel.workbook_summary(rows)
+        print(f"Sheets:        one per day ({totals['days']} day(s)), newest first"
+              + ("  + punch lists" if args.punches else "")
+              + ("  + device info/diagnostics" if args.details else ""))
+        print(f"Totals:        {totals['people']} staff, "
+              f"{sum(row.punches for row in rows)} punch(es), "
+              f"{totals['single_punch']} day(s) with a single punch")
 
     if args.csv:
         csv_path = excel.export_csv(args.csv, filtered.records)
