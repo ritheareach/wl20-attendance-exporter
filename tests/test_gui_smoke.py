@@ -49,6 +49,29 @@ def sample_read() -> DeviceRead:
     )
 
 
+def read_across_month_end() -> DeviceRead:
+    """Text sorting by DD-MM-YYYY puts 01-10 before 02-09 — this exposes it."""
+    stamps = [datetime(2026, 10, 1, 8, 0, 0), datetime(2026, 9, 30, 8, 0, 0),
+              datetime(2026, 9, 2, 8, 0, 0)]
+    return DeviceRead(
+        info=DeviceInfo(host="10.0.0.1"),
+        records=[PunchRecord(user_id="STF-0001", name="SOK Dara", uid=1,
+                             timestamp=stamp, punch=0, status=1) for stamp in stamps],
+    )
+
+
+def read_with_hours() -> DeviceRead:
+    """9.52 h and 10.00 h in one day: text sorting puts 10.00 after 9.52 descending."""
+    records = []
+    for uid, user_id, name, end in ((1, "STF-0001", "SOK Dara", (17, 31, 12)),
+                                    (2, "STF-0002", "NGoun Kimly".title(), (18, 0, 0))):
+        records.append(PunchRecord(user_id=user_id, name=name, uid=uid,
+                                   timestamp=datetime(2026, 9, 15, 8, 0, 0), punch=0, status=1))
+        records.append(PunchRecord(user_id=user_id, name=name, uid=uid,
+                                   timestamp=datetime(2026, 9, 15, *end), punch=1, status=1))
+    return DeviceRead(info=DeviceInfo(host="10.0.0.1"), records=records)
+
+
 @unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
 class GuiSmokeTests(unittest.TestCase):
     @classmethod
@@ -121,12 +144,51 @@ class GuiSmokeTests(unittest.TestCase):
         self.window.filter_edit.setText("")
         self.assertEqual(self.window.records_proxy.rowCount(), 3)
 
-    def test_sorting_by_date_column(self):
+    def test_sorting_by_punch_column(self):
         self.window.preset_combo.setCurrentText("All records")
         self.window.on_fetched(sample_read())
         self.window.records_view.sortByColumn(4, Qt.DescendingOrder)
         first = self.window.records_proxy.index(0, 4).data()
         self.assertEqual(first, "Check Out")
+
+    def test_date_column_sorts_chronologically_across_months(self):
+        self.window.preset_combo.setCurrentText("All records")
+        self.window.on_fetched(read_across_month_end())
+        proxy = self.window.records_proxy
+
+        self.window.records_view.sortByColumn(0, Qt.AscendingOrder)
+        dates = [proxy.index(row, 0).data() for row in range(proxy.rowCount())]
+        self.assertEqual(dates, ["02-09-2026", "30-09-2026", "01-10-2026"])
+
+        self.window.records_view.sortByColumn(0, Qt.DescendingOrder)
+        dates = [proxy.index(row, 0).data() for row in range(proxy.rowCount())]
+        self.assertEqual(dates, ["01-10-2026", "30-09-2026", "02-09-2026"])
+
+    def test_time_column_sorts_by_clock_time(self):
+        self.window.preset_combo.setCurrentText("All records")
+        read = sample_read()
+        self.window.on_fetched(read)
+        self.window.records_view.sortByColumn(1, Qt.DescendingOrder)
+        times = [self.window.records_proxy.index(row, 1).data()
+                 for row in range(self.window.records_proxy.rowCount())]
+        self.assertEqual(times, sorted(times, reverse=True))
+
+    def test_summary_date_sorts_chronologically(self):
+        self.window.preset_combo.setCurrentText("All records")
+        self.window.on_fetched(read_across_month_end())
+        self.window.summary_view.sortByColumn(0, Qt.AscendingOrder)
+        dates = [self.window.summary_proxy.index(row, 0).data()
+                 for row in range(self.window.summary_proxy.rowCount())]
+        self.assertEqual(dates, ["02-09-2026", "30-09-2026", "01-10-2026"])
+
+    def test_summary_hours_sorts_numerically(self):
+        self.window.preset_combo.setCurrentText("All records")
+        self.window.on_fetched(read_with_hours())
+        self.window.summary_view.sortByColumn(5, Qt.DescendingOrder)
+        proxy = self.window.summary_proxy
+        hours = [proxy.index(row, 5).data() for row in range(proxy.rowCount())]
+        self.assertEqual(hours, ["10.00", "9.52"])
+        self.assertEqual(proxy.index(0, 2).data(), "Ngoun Kimly")
 
     def test_date_range_filters_records(self):
         read = sample_read()

@@ -58,6 +58,15 @@ BUSY_NOTE = ("The terminal serves one connection at a time. While this app reads
              "FaceGO live listener on the office server is pushed off its socket — run "
              "exports outside peak hours.")
 
+# Sorting must not use the displayed text: "01-10-2026" would sort before
+# "02-09-2026" in DD-MM-YYYY, and "10.00" before "9.52". This role carries a
+# numeric/chronological key per cell and every proxy sorts on it.
+SORT_ROLE = int(Qt.UserRole) + 1
+
+
+def _seconds_of_day(stamp: datetime) -> int:
+    return stamp.hour * 3600 + stamp.minute * 60 + stamp.second
+
 
 def asset_path(name: str) -> Path:
     """Locate a bundled asset in a source checkout or inside a frozen build."""
@@ -117,6 +126,24 @@ class RecordsModel(QAbstractTableModel):
             return None
         record = self._rows[index.row()]
         column = index.column()
+        if role == SORT_ROLE:
+            # Chronological/numeric keys: real instants for date and time,
+            # lower-cased text for names so sorting matches what is displayed.
+            if column == 0:
+                return record.timestamp.toordinal() * 86400 + _seconds_of_day(record.timestamp)
+            if column == 1:
+                return _seconds_of_day(record.timestamp)
+            if column == 2:
+                return record.user_id.lower()
+            if column == 3:
+                return (record.name or "").lower()
+            if column == 4:
+                return record.punch
+            if column == 5:
+                return record.verify_text.lower()
+            if column == 6:
+                return record.uid
+            return (record.device_user_id or "").lower()
         if role == Qt.DisplayRole:
             if column == 0:
                 return record.timestamp.strftime("%d-%m-%Y")
@@ -179,6 +206,22 @@ class SummaryModel(QAbstractTableModel):
             return None
         row = self._rows[index.row()]
         column = index.column()
+        if role == SORT_ROLE:
+            if column == 0:
+                return row.day.toordinal()
+            if column == 1:
+                return row.user_id.lower()
+            if column == 2:
+                return (row.name or "").lower()
+            if column == 3:
+                return _seconds_of_day(row.first_in) if row.first_in else -1
+            if column == 4:
+                return _seconds_of_day(row.last_out) if row.last_out else -1
+            if column == 5:
+                return row.hours
+            if column == 6:
+                return row.punches
+            return 1 if row.single_punch else 0
         if role == Qt.DisplayRole:
             if column == 0:
                 return row.day.strftime("%d-%m-%Y")
@@ -414,6 +457,7 @@ class MainWindow(QMainWindow):
         self.records_model = RecordsModel(self)
         self.records_proxy = QSortFilterProxyModel(self)
         self.records_proxy.setSourceModel(self.records_model)
+        self.records_proxy.setSortRole(SORT_ROLE)
         self.records_proxy.setFilterCaseSensitivity(Qt.CaseInsensitive)
         self.records_proxy.setFilterKeyColumn(-1)
         self.filter_edit.textChanged.connect(self.records_proxy.setFilterFixedString)
@@ -431,7 +475,10 @@ class MainWindow(QMainWindow):
         self.summary_totals_label.setObjectName("SectionLabel")
         summary_layout.addWidget(self.summary_totals_label)
         self.summary_model = SummaryModel(self)
-        self.summary_view = self._make_table(self.summary_model, stretch_column=2)
+        self.summary_proxy = QSortFilterProxyModel(self)
+        self.summary_proxy.setSourceModel(self.summary_model)
+        self.summary_proxy.setSortRole(SORT_ROLE)
+        self.summary_view = self._make_table(self.summary_proxy, stretch_column=2)
         summary_layout.addWidget(self.summary_view, 1)
         self.tabs.addTab(summary_tab, "Daily Summary")
 
