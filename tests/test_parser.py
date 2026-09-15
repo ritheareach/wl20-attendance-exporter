@@ -99,7 +99,7 @@ class AttendanceParsingTests(unittest.TestCase):
         report = ParseReport()
         records = device.parse_attendance_payload(payload, self.users, report)
         self.assertEqual(sorted(record.user_id for record in records),
-                         ["STF-0002", "STF-0001"])
+                         ["STF-0001", "STF-0002"])
         self.assertEqual(records[0].timestamp, datetime(2026, 9, 15, 8, 0, 0))
 
     def test_duplicates_are_dropped(self):

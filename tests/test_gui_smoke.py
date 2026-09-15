@@ -202,7 +202,7 @@ class GuiSmokeTests(unittest.TestCase):
     def test_search_filter_matches_name_and_id(self):
         self.window.preset_combo.setCurrentText("All records")
         self.window.on_fetched(sample_read())
-        self.window.filter_edit.setText("Kimly")
+        self.window.filter_edit.setText("Sokha")
         self.assertEqual(self.window.records_proxy.rowCount(), 1)
         self.window.filter_edit.setText("STF-0001")
         self.assertEqual(self.window.records_proxy.rowCount(), 2)
@@ -263,14 +263,24 @@ class GuiSmokeTests(unittest.TestCase):
                           "Last check-out", "Total hours", "Punches", "Status"])
         self.window.preset_combo.setCurrentText("All records")
         self.window.on_fetched(sample_read())
-        row = [self.window.summary_model.index(0, column).data()
-               for column in range(self.window.summary_model.columnCount())]
-        # sample_read()'s newest day is a single-punch day for STF-0002.
-        self.assertEqual(row[0], "15-09-2026")
-        self.assertEqual(row[3], "08:12")
-        self.assertEqual(row[4], "", "no check-out yet")
-        self.assertEqual(row[5], "", "no hours yet")
-        self.assertEqual(row[7], "Present")
+        # Both sample rows are on 15-09-2026, ordered by staff id: STF-0001 has
+        # check-in and check-out, STF-0002 has a single punch so far.
+        completed = [self.window.summary_model.index(0, column).data()
+                     for column in range(self.window.summary_model.columnCount())]
+        self.assertEqual(completed[0], "15-09-2026")
+        self.assertEqual(completed[1], "STF-0001")
+        self.assertEqual(completed[3], "08:01")
+        self.assertEqual(completed[4], "17:30")
+        self.assertEqual(completed[5], "9h28mn")
+        self.assertEqual(completed[7], "Completed")
+
+        present = [self.window.summary_model.index(1, column).data()
+                   for column in range(self.window.summary_model.columnCount())]
+        self.assertEqual(present[1], "STF-0002")
+        self.assertEqual(present[3], "08:12")
+        self.assertEqual(present[4], "", "no check-out yet")
+        self.assertEqual(present[5], "", "no hours yet")
+        self.assertEqual(present[7], "Present")
 
     def test_date_range_filters_records(self):
         read = sample_read()
@@ -321,11 +331,11 @@ class GuiSmokeTests(unittest.TestCase):
                          ["No.", "Staff ID", "Staff Name", "First Check-in",
                           "Last Check-out", "Total Hours", "Status"])
         self.assertEqual(sheet.max_row, 3, "header + two people")
-        # Sorted by staff id: STF-0002 (single punch) then STF-0001 (in and out).
-        self.assertEqual(sheet.cell(row=2, column=2).value, "STF-0002")
-        self.assertEqual(sheet.cell(row=2, column=7).value, "Present")
-        self.assertEqual(sheet.cell(row=3, column=2).value, "STF-0001")
-        self.assertEqual(sheet.cell(row=3, column=7).value, "Completed")
+        # Sorted by staff id: STF-0001 (in and out) then STF-0002 (one punch).
+        self.assertEqual(sheet.cell(row=2, column=2).value, "STF-0001")
+        self.assertEqual(sheet.cell(row=2, column=7).value, "Completed")
+        self.assertEqual(sheet.cell(row=3, column=2).value, "STF-0002")
+        self.assertEqual(sheet.cell(row=3, column=7).value, "Present")
 
 
 if __name__ == "__main__":
