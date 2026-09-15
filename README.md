@@ -26,7 +26,9 @@ them to a formatted **Excel (.xlsx)** workbook.
 ## Download
 
 Grab the build for your OS from the **Releases** page (built automatically for
-Windows, macOS and Linux by GitHub Actions):
+Windows, macOS and Linux by GitHub Actions). The repository is public, so no
+GitHub account is needed — download straight from the machine that will run the
+app rather than copying it between computers.
 
 | OS | File |
 | --- | --- |
