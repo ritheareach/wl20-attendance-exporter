@@ -5,8 +5,14 @@
 
 Windows / Linux  -> dist/WL20-Attendance-Exporter[.exe]  (single file)
 macOS            -> dist/WL20 Attendance Exporter.app    (self-contained bundle)
+
+Set WL20_ONEDIR=1 to build a folder instead of a single file. Single-file builds
+unpack themselves into %TEMP% at every start, which antivirus products on locked
+down Windows machines sometimes block (the bootloader then reports "Could not
+load PyInstaller's embedded PKG archive"); the folder build always starts.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -73,6 +79,16 @@ if sys.platform == "darwin":
             "NSHighResolutionCapable": True,
             "LSMinimumSystemVersion": "11.0",
         },
+    )
+elif os.environ.get("WL20_ONEDIR") == "1":
+    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, **EXE_KWARGS)
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.datas,
+        strip=False,
+        upx=False,
+        name="WL20-Attendance-Exporter",
     )
 else:
     exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], runtime_tmpdir=None,

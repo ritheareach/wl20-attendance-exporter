@@ -68,6 +68,21 @@ jobs:
             ./dist/WL20-Attendance-Exporter --selftest
           fi
 
+      # Fallback for locked-down Windows machines where antivirus blocks the
+      # single-file build's self-extraction ("Could not load PyInstaller's
+      # embedded PKG archive from the executable").
+      - name: Build folder variant (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          WL20_ONEDIR: "1"
+        run: |
+          pyinstaller packaging/wl20-exporter.spec --noconfirm \
+            --distpath dist-folder --workpath build-folder
+          ./dist-folder/WL20-Attendance-Exporter/WL20-Attendance-Exporter.exe --selftest
+          powershell -Command "Compress-Archive -Path 'dist-folder/WL20-Attendance-Exporter' -DestinationPath 'dist/WL20-Attendance-Exporter-windows-folder.zip' -Force"
+          ls -la dist
+
       - name: Package (macOS app bundle)
         if: runner.os == 'macOS'
         run: |

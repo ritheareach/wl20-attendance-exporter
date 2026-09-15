@@ -30,7 +30,8 @@ Windows, macOS and Linux by GitHub Actions):
 
 | OS | File |
 | --- | --- |
-| Windows | `WL20-Attendance-Exporter.exe` |
+| Windows | `WL20-Attendance-Exporter.exe` (single file) |
+| Windows (fallback) | `WL20-Attendance-Exporter-windows-folder.zip` — unpack and run the `.exe` inside |
 | macOS | `WL20-Attendance-Exporter-macos.zip` (app bundle) |
 | Linux | `WL20-Attendance-Exporter` |
 
@@ -38,6 +39,18 @@ No Python installation is needed for the packaged builds. The builds are not
 code-signed: on Windows choose *More info → Run anyway* (SmartScreen), on macOS
 right-click the app → *Open* (Gatekeeper). Verify the download against
 `SHA256SUMS.txt` from the same release.
+
+**Save the file to a real folder before running it.** Launching it straight from
+the browser's download bar runs it out of Chrome/Edge's temporary `scoped_dir`,
+where the single-file build can fail with *"Could not load PyInstaller's embedded
+PKG archive from the executable"* (and antivirus on locked-down machines blocks
+exactly that). If the single-file `.exe` still refuses to start, use the
+**folder** zip: unpack it anywhere and run `WL20-Attendance-Exporter.exe` inside —
+it needs no self-extraction. Verify the hash first:
+
+```powershell
+Get-FileHash .\WL20-Attendance-Exporter.exe -Algorithm SHA256
+```
 
 The Linux build needs the usual Qt runtime libraries — present on every desktop
 install, and available as `libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1`
