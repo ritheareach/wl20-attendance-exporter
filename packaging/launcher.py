@@ -23,12 +23,11 @@ if __name__ == "__main__":
         from wl20_exporter.models import DeviceInfo, DeviceRead, ParseReport
 
         app = gui.QApplication([])
-        app.setStyleSheet(gui.STYLESHEET)
+        gui.configure_app(app)
         icon = gui.app_icon()
         if icon.isNull():
             print("selftest FAILED: the application icon is missing from the bundle")
             raise SystemExit(1)
-        app.setWindowIcon(icon)
         window = gui.MainWindow()
         window.preset_combo.setCurrentText("All records")
         window.on_fetched(DeviceRead(info=DeviceInfo(host="selftest"),

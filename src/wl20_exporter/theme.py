@@ -9,6 +9,12 @@ QWidget {{
     font-size: 13px;
     color: #1f2430;
 }}
+/* Every surface that paints its own white background must also pin its text
+   colour: with the OS in dark mode the inherited palette text is white, which
+   renders white-on-white inside these widgets. */
+QLabel, QCheckBox, QRadioButton, QGroupBox {{ color: #1f2430; }}
+QGroupBox {{ margin-top: 8px; }}
+QGroupBox::title {{ color: #4b5563; subcontrol-origin: margin; left: 10px; padding: 0 4px; }}
 QMainWindow, QDialog {{ background: #f4f6f9; }}
 
 QLabel#Title {{ font-size: 22px; font-weight: 700; color: {ACCENT}; }}
@@ -48,17 +54,35 @@ QPushButton#Accent:hover {{ background: #166a31; border-color: #166a31; }}
 QPushButton#Accent:disabled {{ background: #a9cbb4; border-color: #a9cbb4; color: #eef7f0; }}
 
 QLineEdit, QSpinBox, QDateEdit, QComboBox {{
-    background: #ffffff; border: 1px solid #c9d1de; border-radius: 7px;
-    padding: 6px 8px; selection-background-color: {ACCENT};
+    color: #1f2430; background: #ffffff; border: 1px solid #c9d1de;
+    border-radius: 7px; padding: 5px 6px; min-height: 22px;
+    selection-background-color: {ACCENT}; selection-color: #ffffff;
+}}
+/* Spin boxes and date fields draw their text through the style, which on
+   macOS reserves room for the stepper buttons — keep their own padding small
+   so the digits always have a text area left. */
+QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit {{
+    padding: 4px 4px;
 }}
 QLineEdit:focus, QSpinBox:focus, QDateEdit:focus, QComboBox:focus {{
     border-color: {ACCENT};
 }}
+QLineEdit:disabled, QSpinBox:disabled, QDateEdit:disabled, QComboBox:disabled {{
+    color: #8b93a1; background: #f2f4f7; border-color: #dfe3ea;
+}}
+QLineEdit:read-only {{ color: #4b5563; }}
+QComboBox QAbstractItemView, QCalendarWidget QAbstractItemView {{
+    color: #1f2430; background: #ffffff; selection-background-color: {ACCENT};
+    selection-color: #ffffff; border: 1px solid #c9d1de;
+}}
+QCalendarWidget QWidget {{ color: #1f2430; background: #ffffff; }}
 QComboBox::drop-down {{ border: none; width: 18px; }}
+QSpinBox::up-button, QSpinBox::down-button,
+QDateEdit::up-button, QDateEdit::down-button {{ width: 16px; }}
 QCheckBox {{ spacing: 6px; }}
 
 QTableView {{
-    background: #ffffff; border: 1px solid #e2e6ee; border-radius: 10px;
+    color: #1f2430; background: #ffffff; border: 1px solid #e2e6ee; border-radius: 10px;
     gridline-color: #eef1f6; selection-background-color: #dbe6f6;
     selection-color: #1f2430; alternate-background-color: #fafbfd;
 }}
@@ -78,14 +102,19 @@ QTabBar::tab:selected {{ background: #ffffff; color: {ACCENT}; border: 1px solid
 QTabBar::tab:hover {{ color: {ACCENT}; }}
 
 QPlainTextEdit {{
-    background: #ffffff; border: 1px solid #e2e6ee; border-radius: 10px;
+    color: #1f2430; background: #ffffff; border: 1px solid #e2e6ee; border-radius: 10px;
     font-family: "SF Mono", "Consolas", "DejaVu Sans Mono", monospace;
     font-size: 12px; padding: 6px;
 }}
 QProgressBar {{
-    border: none; border-radius: 3px; background: #e2e6ee; height: 6px; text-align: center;
+    color: #1f2430; border: none; border-radius: 3px; background: #e2e6ee;
+    height: 6px; text-align: center;
 }}
 QProgressBar::chunk {{ background: {ACCENT}; border-radius: 3px; }}
 QStatusBar {{ background: #ffffff; border-top: 1px solid #e2e6ee; color: #4b5563; }}
+QTabWidget::pane, QTabBar::tab {{ color: #4b5563; }}
 QToolTip {{ background: #1f2430; color: #ffffff; border: none; padding: 6px; }}
+QScrollBar:vertical, QScrollBar:horizontal {{ background: #f4f6f9; border: none; }}
+QScrollBar::handle {{ background: #c3cbd8; border-radius: 5px; min-height: 24px; }}
+QMenu {{ color: #1f2430; background: #ffffff; }}
 """

@@ -18,7 +18,7 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QKeySequence, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -49,7 +49,7 @@ from PySide6.QtWidgets import (
 from . import __version__, config, device, excel
 from .models import DailyRow, DeviceRead, PunchRecord
 from .summary import build_daily_rows, summary_totals
-from .theme import STYLESHEET
+from .theme import ACCENT, STYLESHEET
 
 APP_TITLE = "WL20 Attendance Exporter"
 PRESETS = ["All records", "Today", "Last 7 days", "Last 30 days", "This month", "Custom"]
@@ -87,6 +87,42 @@ def app_icon() -> QIcon:
     """AIFarm icon; empty only if the asset was somehow not shipped."""
     path = asset_path("icon.png")
     return QIcon(str(path)) if path.is_file() else QIcon()
+
+
+def light_palette() -> QPalette:
+    """Pin a light palette so a dark OS theme cannot bleed into the widgets.
+
+    The stylesheet paints white input backgrounds; without this the inherited
+    dark-theme text colour is white too and every field renders blank.
+    """
+    palette = QPalette()
+    palette.setColor(QPalette.Window, QColor("#f4f6f9"))
+    palette.setColor(QPalette.WindowText, QColor("#1f2430"))
+    palette.setColor(QPalette.Base, QColor("#ffffff"))
+    palette.setColor(QPalette.AlternateBase, QColor("#fafbfd"))
+    palette.setColor(QPalette.Text, QColor("#1f2430"))
+    palette.setColor(QPalette.Button, QColor("#ffffff"))
+    palette.setColor(QPalette.ButtonText, QColor("#1f2430"))
+    palette.setColor(QPalette.Highlight, QColor(ACCENT))
+    palette.setColor(QPalette.HighlightedText, QColor("#ffffff"))
+    palette.setColor(QPalette.ToolTipBase, QColor("#1f2430"))
+    palette.setColor(QPalette.ToolTipText, QColor("#ffffff"))
+    palette.setColor(QPalette.PlaceholderText, QColor("#8b93a1"))
+    palette.setColor(QPalette.Disabled, QPalette.Text, QColor("#8b93a1"))
+    palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor("#a3aab6"))
+    return palette
+
+
+def configure_app(app: QApplication) -> None:
+    """One place that sets style, palette, icon and stylesheet for every entry point."""
+    app.setApplicationName(APP_TITLE)
+    app.setApplicationVersion(__version__)
+    # Fusion keeps widget metrics identical on Windows, macOS and Linux; the
+    # native Aqua style ignores parts of the stylesheet and squeezed the fields.
+    app.setStyle("Fusion")
+    app.setPalette(light_palette())
+    app.setWindowIcon(app_icon())
+    app.setStyleSheet(STYLESHEET)
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +388,10 @@ class MainWindow(QMainWindow):
 
     def _build_side_panel(self) -> QWidget:
         panel = QWidget()
-        panel.setFixedWidth(330)
+        # A hard 330px pin squeezed the spin boxes on macOS (Aqua padding plus
+        # the stylesheet's own padding left room for barely one digit).
+        panel.setMinimumWidth(360)
+        panel.setMaximumWidth(430)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
@@ -361,6 +400,9 @@ class MainWindow(QMainWindow):
         terminal = QGroupBox("Terminal")
         form = QFormLayout(terminal)
         form.setLabelAlignment(Qt.AlignRight)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.DontWrapRows)
+        form.setHorizontalSpacing(10)
         self.host_edit = QLineEdit(self.settings["host"])
         self.port_spin = QSpinBox()
         self.port_spin.setRange(1, 65535)
@@ -378,6 +420,12 @@ class MainWindow(QMainWindow):
                                    "The terminal is re-enabled automatically.")
         self.test_button = QPushButton("Test connection")
         self.test_button.clicked.connect(self.on_test)
+        # Minimum widths that fit the longest real value on every platform:
+        # full IP, 4-digit port, 6-digit password, "120 s" timeout.
+        self.host_edit.setMinimumWidth(150)
+        for spin in (self.port_spin, self.password_spin, self.timeout_spin):
+            spin.setMinimumWidth(92)
+            spin.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         form.addRow("Address", self.host_edit)
         form.addRow("Port", self.port_spin)
         form.addRow("Password", self.password_spin)
@@ -403,6 +451,9 @@ class MainWindow(QMainWindow):
         self.preset_combo.currentTextChanged.connect(self.on_preset_changed)
         self.from_edit.dateChanged.connect(self._mark_custom)
         self.to_edit.dateChanged.connect(self._mark_custom)
+        self.preset_combo.setMinimumWidth(160)
+        self.from_edit.setMinimumWidth(130)
+        self.to_edit.setMinimumWidth(130)
         range_layout.addWidget(self.preset_combo)
         range_layout.addWidget(QLabel("From"))
         range_layout.addWidget(self.from_edit)
@@ -836,10 +887,7 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName(APP_TITLE)
-    app.setApplicationVersion(__version__)
-    app.setWindowIcon(app_icon())
-    app.setStyleSheet(STYLESHEET)
+    configure_app(app)
     window = MainWindow()
     window.show()
     return app.exec()

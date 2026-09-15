@@ -14,7 +14,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 try:
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import QPoint, QRect, Qt
+    from PySide6.QtGui import QPalette
     from PySide6.QtWidgets import QApplication
     HAVE_QT = True
 except ImportError:  # pragma: no cover - PySide6 is a hard runtime dep, but keep CI honest
@@ -115,6 +116,70 @@ class GuiSmokeTests(unittest.TestCase):
         self.assertTrue(gui.asset_path("icon.png").is_file())
         self.assertFalse(gui.app_icon().isNull(), "the AIFarm icon must ship with the app")
         self.assertFalse(self.window.windowIcon().isNull())
+
+    @staticmethod
+    def _dark_text_pixels(image, window, widget, threshold=90):
+        """Count pixels dark enough to be text inside a widget's rectangle."""
+        origin = widget.mapTo(window, QPoint(0, 0))
+        crop = image.copy(QRect(origin, widget.size()))
+        return sum(1 for y in range(crop.height()) for x in range(crop.width())
+                   if crop.pixelColor(x, y).lightness() < threshold)
+
+    def test_input_values_stay_readable_under_a_dark_system_theme(self):
+        """Invisible field text (white on white) must never come back."""
+        from wl20_exporter import gui
+
+        app = self.app
+        original_palette = app.palette()
+        dark = QPalette()
+        for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText,
+                     QPalette.ToolTipText):
+            dark.setColor(role, Qt.white)
+        dark.setColor(QPalette.Window, Qt.black)
+        dark.setColor(QPalette.Base, Qt.black)
+        dark.setColor(QPalette.Button, Qt.black)
+        app.setPalette(dark)  # a Mac/Windows box in dark mode
+
+        gui.configure_app(app)  # the app must override the system theme itself
+        window = gui.MainWindow()
+        window.resize(1180, 760)
+        window.show()
+        app.processEvents()
+        app.processEvents()
+        image = window.grab().toImage()
+
+        try:
+            for name, widget in (("Address", window.host_edit), ("Port", window.port_spin),
+                                 ("Password", window.password_spin),
+                                 ("Timeout", window.timeout_spin),
+                                 ("From date", window.from_edit), ("To date", window.to_edit),
+                                 ("Preset", window.preset_combo)):
+                self.assertGreater(
+                    self._dark_text_pixels(image, window, widget), 5,
+                    f"{name}: value is not drawn in a readable colour")
+        finally:
+            window.close()
+            app.setPalette(original_palette)
+
+    def test_input_fields_are_wide_enough_for_their_values(self):
+        self.window.resize(1180, 760)
+        self.window.show()
+        self.app.processEvents()
+        fields = (
+            ("Address", self.window.host_edit, self.window.host_edit.text()),
+            ("Port", self.window.port_spin, str(self.window.port_spin.value())),
+            ("Password", self.window.password_spin, str(self.window.password_spin.value())),
+            ("Timeout", self.window.timeout_spin, self.window.timeout_spin.text()),
+            ("From date", self.window.from_edit, self.window.from_edit.text()),
+            ("To date", self.window.to_edit, self.window.to_edit.text()),
+            ("Preset", self.window.preset_combo, "Last 30 days"),
+        )
+        for name, widget, value in fields:
+            # Leave room for the field's padding and its drop-down/spin buttons.
+            needed = widget.fontMetrics().horizontalAdvance(value) + 40
+            self.assertGreaterEqual(widget.width(), needed,
+                                    f"{name} field ({widget.width()}px) clips {value!r}")
+        self.window.close()
 
     def test_preset_all_records_disables_dates(self):
         self.window.preset_combo.setCurrentText("All records")
