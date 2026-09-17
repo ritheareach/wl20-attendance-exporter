@@ -38,10 +38,16 @@ app rather than copying it between computers.
 | macOS (zip) | `-macos.zip` | the same app bundle without the disk image |
 | Linux | `WL20-Attendance-Exporter` | single-file executable (chmod +x and run) |
 
-No Python installation is needed for the packaged builds. The builds are not
-code-signed: on Windows choose *More info → Run anyway* (SmartScreen), on macOS
-right-click the app → *Open* (Gatekeeper). Verify the download against
-`SHA256SUMS.txt` from the same release.
+**Nothing to install first.** These builds carry their own Python and Qt inside, so
+they run on a computer that has never had Python on it and where you cannot install
+anything — no Python, no pip, no dependencies, no admin rights. CI checks this on
+every build: the bundled interpreter must be inside the app, and the frozen app is
+started with an emptied environment (no Python reachable at all) before it ships.
+
+The builds are not code-signed, which is a separate matter: on Windows choose
+*More info → Run anyway* (SmartScreen) the first time, on macOS right-click the app →
+*Open* (Gatekeeper). Verify the download against the `SHA256SUMS` file from the same
+release.
 
 Each release is built and then **installed/mounted on its own platform by CI**: the
 Windows installer is run silently from PowerShell and the installed app is executed,

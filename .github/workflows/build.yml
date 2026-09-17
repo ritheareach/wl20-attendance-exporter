@@ -101,6 +101,36 @@ jobs:
           if ($run.ExitCode -ne 0) { throw "folder-build selftest failed ($($run.ExitCode))" }
           Write-Host "folder-build selftest exit code: $($run.ExitCode)"
 
+      # The app must run on a machine that has never had Python installed: the
+      # interpreter and Qt have to be inside the build, not found on the system.
+      - name: Prove the app is self-contained (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $internal = "dist-folder\WL20-Attendance-Exporter\_internal"
+          $python = Get-ChildItem "$internal\python3*.dll" -ErrorAction SilentlyContinue
+          if (!$python) { throw "no bundled Python ($internal\python3*.dll) - the app would need Python installed" }
+          if (!(Test-Path "$internal\PySide6\Qt6Core.dll")) { throw "no bundled Qt runtime" }
+          if (!(Test-Path "$internal\PySide6\Qt6Widgets.dll")) { throw "no bundled Qt Widgets" }
+          Write-Host "bundled interpreter: $($python.Name)"
+
+      - name: Prove the app is self-contained (macOS / Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          # Run with an empty environment: no PATH to any system Python, no
+          # PYTHONHOME/PYTHONPATH. If the build leans on the machine's Python,
+          # this is where it breaks.
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            app="dist/WL20 Attendance Exporter.app/Contents/MacOS/WL20-Attendance-Exporter"
+            echo "app binary: $(du -h "$app" | cut -f1)"
+            otool -L "$app" | grep -c "Python.framework" || true
+            env -i HOME="$HOME" PATH=/usr/bin:/bin "$app" --selftest
+          else
+            bash -c 'env -i HOME="$HOME" PATH=/usr/bin:/bin ./dist/WL20-Attendance-Exporter --selftest'
+          fi
+          echo "the frozen app runs with no Python available in the environment"
+
       - name: Build installer (Windows, Inno Setup)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -128,6 +158,11 @@ jobs:
           $exe = Join-Path $dir "WL20-Attendance-Exporter.exe"
           if (!(Test-Path $exe)) { throw "installer did not place the app in $dir" }
           if (!(Test-Path (Join-Path $dir "unins000.exe"))) { throw "no uninstaller was created" }
+          # what was installed must be self-contained too (no Python on the machine)
+          if (!(Get-ChildItem (Join-Path $dir "_internal\python3*.dll") -ErrorAction SilentlyContinue)) {
+            throw "the installed copy has no bundled Python"
+          }
+          Write-Host "installed copy carries its own interpreter and Qt"
           $run = Start-Process $exe -ArgumentList "--selftest" -Wait -PassThru -NoNewWindow
           if ($run.ExitCode -ne 0) { throw "the installed app failed its selftest ($($run.ExitCode))" }
           Write-Host "installed and verified at $dir (selftest exit code $($run.ExitCode))"

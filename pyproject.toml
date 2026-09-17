@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wl20-attendance-exporter"
-version = "1.4.2"
+version = "1.4.3"
 description = "Download attendance from a ZKTeco WL20 fingerprint terminal and export to Excel (Windows / macOS / Linux)."
 readme = "README.md"
 requires-python = ">=3.9"
