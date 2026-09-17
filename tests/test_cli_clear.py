@@ -48,10 +48,28 @@ class ClearAfterExportGuardTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(self.cleared, [], "the log must not be erased when nothing was read")
 
-    def test_unwritable_export_never_reaches_the_erase(self):
-        code = cli.main(["--clear-after-export", "--out", "/proc/definitely/not/writable.xlsx"])
-        self.assertIn(code, (3, 4))
-        self.assertEqual(self.cleared, [], "the log must not be erased when no workbook exists")
+    def test_failed_export_never_reaches_the_erase(self):
+        """An export that raises must abort before the erase, on any platform."""
+        def boom(*args, **kwargs):
+            raise OSError("disk full or no permission")
+        original = excel.export_workbook
+        excel.export_workbook = boom
+        self.addCleanup(lambda: setattr(excel, "export_workbook", original))
+
+        code = cli.main(["--clear-after-export"])
+        self.assertEqual(code, 3)
+        self.assertEqual(self.cleared, [], "the log must not be erased when nothing was read")
+
+    def test_erases_only_when_a_workbook_really_exists(self):
+        """Claiming success is not enough: the file has to be on disk."""
+        original = excel.export_workbook
+        excel.export_workbook = lambda path, *args, **kwargs: Path(path)  # writes nothing
+        self.addCleanup(lambda: setattr(excel, "export_workbook", original))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            code = cli.main(["--clear-after-export", "--out", str(Path(tmp) / "never.xlsx")])
+        self.assertEqual(code, 4)
+        self.assertEqual(self.cleared, [], "no workbook on disk means no erase")
 
     def test_erases_only_after_the_workbook_is_written(self):
         with tempfile.TemporaryDirectory() as tmp:
