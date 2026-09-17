@@ -166,9 +166,9 @@ dist/WL20-Attendance-Exporter --selftest   # boots Qt + parser + exporter offscr
 
 ## Icon
 
-The app icon is the office **AIFarm** mark (cow head in the yellow frame), derived
-from `static/src/AIFarm_Logo _cropped.png` in the FaceGO repo. Regenerate the
-`.png` / `.ico` / `.icns` set after any logo change:
+The app icon is the office **AIFarm** mark (cow head in the yellow frame), generated
+from the office logo file by `tools/make_icon.py`. Regenerate the `.png` / `.ico` /
+`.icns` set after any logo change:
 
 ```bash
 python tools/make_icon.py --source "/path/to/AIFarm_Logo _cropped.png"
@@ -179,8 +179,8 @@ Windows taskbar, the macOS dock and Linux window lists alike.
 
 ## Excel output
 
-The workbook mirrors the office **FaceGO attendance log** (`.recording_log/<Month>_<Year>_attendance.xlsx`):
-one sheet per day, named DD-MM-YYYY, newest day first, with the same seven columns:
+The workbook mirrors the office attendance log: one sheet per day, named DD-MM-YYYY,
+newest day first, with the usual seven columns:
 
 | No. | Staff ID | Staff Name | First Check-in | Last Check-out | Total Hours | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -189,9 +189,10 @@ one sheet per day, named DD-MM-YYYY, newest day first, with the same seven colum
   yet leaves the last check-out and the hours blank and reads **Present** (otherwise
   **Completed**).
 - Header style is the office palette (white on `#366092`); nothing else is decorated.
-- `--punches` adds a raw punch-list sheet per day (the export's equivalent of FaceGO's
-  `_raw_log.xlsx`), `--details` adds the Device Info and Diagnostics sheets used for
-  troubleshooting. Both are off by default.
+- `--punches` adds a raw punch-list sheet per day (each punch on its own row, for
+  auditing) and `--details` adds the Device Info and Diagnostics sheets used for
+  troubleshooting. Both are off by default; the Diagnostics sheet also appears on its
+  own whenever a read was incomplete, so a partial export never looks complete.
 
 ## Tests
 

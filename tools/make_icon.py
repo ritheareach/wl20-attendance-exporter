@@ -6,7 +6,7 @@ Writes src/wl20_exporter/assets/icon.{png,ico,icns}: the logo's yellow-framed
 square trimmed to its own frame and centred on a square canvas, so the mark
 stays even at 512/256/128/64/48/32/24/16 px.
 
-The default source is the FaceGO repo's copy of the office logo.
+The default source is the office logo file on this machine.
 """
 
 from __future__ import annotations

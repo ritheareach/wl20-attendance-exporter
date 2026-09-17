@@ -59,7 +59,7 @@ class WorkbookTests(unittest.TestCase):
         workbook = load_workbook(self.path)
         self.assertEqual(workbook.sheetnames, ["15-09-2026", "14-09-2026"])
 
-    def test_columns_match_the_facego_log(self):
+    def test_columns_match_the_office_log(self):
         excel.export_workbook(self.path, sample_read())
         sheet = load_workbook(self.path)["14-09-2026"]
         headers = [cell.value for cell in sheet[1]]

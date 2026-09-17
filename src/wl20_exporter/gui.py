@@ -213,7 +213,7 @@ class RecordsModel(QAbstractTableModel):
 
 
 class SummaryModel(QAbstractTableModel):
-    # Mirrors the exported workbook (one sheet per day, FaceGO column set).
+    # Mirrors the exported workbook (one sheet per day, the office column set).
     HEADERS = ["Date", "Staff ID", "Staff Name", "First check-in", "Last check-out",
                "Total hours", "Punches", "Status"]
 
