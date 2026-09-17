@@ -145,6 +145,45 @@ class GuiSmokeTests(unittest.TestCase):
         self.window._stop_flag = None
         self.window._set_busy(False)
 
+    def test_restart_terminal_asks_before_rebooting(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        from wl20_exporter import device
+
+        captured = {}
+        self.window._start_job = lambda job, **kwargs: captured.update({"job": job, **kwargs})
+        original = QMessageBox.question
+        QMessageBox.question = staticmethod(lambda *args, **kwargs: QMessageBox.Yes)
+        try:
+            self.window.on_restart_terminal()
+        finally:
+            QMessageBox.question = original
+        self.assertEqual(captured["job"], "restart")
+        self.assertEqual(captured["wait_seconds"], device.RESTART_WAIT)
+        self.assertEqual(captured["port"], self.window.port_spin.value())
+        self.assertTrue(self.window.stop_button.isEnabled())
+        self.window._stop_flag = None
+        self.window._set_busy(False)
+
+    def test_restart_terminal_can_be_declined(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        started = []
+        self.window._start_job = lambda job, **kwargs: started.append(job)
+        original = QMessageBox.question
+        QMessageBox.question = staticmethod(lambda *args, **kwargs: QMessageBox.No)
+        try:
+            self.window.on_restart_terminal()
+        finally:
+            QMessageBox.question = original
+        self.assertEqual(started, [], "declining must not reboot anything")
+        self.assertIn("Restart cancelled", self.window.log_view.toPlainText())
+
+    def test_auto_restart_is_opt_in(self):
+        self.assertFalse(self.window.auto_restart_check.isChecked(),
+                         "rebooting the office terminal must never be the default")
+        self.assertTrue(self.window.restart_button.isEnabled())
+
     @staticmethod
     def _dark_text_pixels(image, window, widget, threshold=90):
         """Count pixels dark enough to be text inside a widget's rectangle."""

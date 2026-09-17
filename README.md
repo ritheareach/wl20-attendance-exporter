@@ -96,8 +96,25 @@ unreachable while it reboots, so an export has to wait it out instead of failing
   wait immediately.
 - **CLI**: `--retries N` (attempts, default 1) with `--retry-delay SECONDS`, or
   `--wait-for-device SECONDS` to keep trying until that deadline regardless of attempts.
-- **Terminal genuinely wedged?** The FaceGO repo's `scripts/restart_wl20.py` sends the
-  remote reboot command; the app's error message tells you when that is the case.
+- **Terminal genuinely wedged?** Reboot it remotely — see below.
+
+## Restarting the terminal
+
+The app can reboot the terminal over the ZK protocol (the same `CMD_RESTART` the FaceGO
+repo's `scripts/restart_wl20.py` sends). Attendance records live in flash, so a reboot
+never loses them; the terminal is offline for roughly 1-2 minutes and FaceGO reconnects
+on its own when it returns.
+
+- **In the app**: the **Restart terminal** button (it asks first), and the optional
+  *Restart the terminal if reads keep failing* — off by default, a last resort that
+  reboots and reads once more when the retries above are used up.
+- **CLI**: `wl20-export --restart` reboots and waits for it to come back (exit 0 when it
+  does); `--restart-if-needed` lets a normal export reboot the terminal if it stays
+  unreadable, and `--restart-wait SECONDS` (default 180) sets how long to wait after a
+  reboot.
+
+A terminal that is completely unreachable cannot be rebooted remotely — there is nothing
+to send the command to — so the app only waits in that case.
 
 Unattended daily export on the Jetson (waits up to 10 minutes for the terminal):
 

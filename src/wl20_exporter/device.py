@@ -34,6 +34,8 @@ from .models import (
 DEFAULT_HOST = "192.168.88.245"
 DEFAULT_PORT = 4370
 DEFAULT_TIMEOUT = 10
+# The terminal takes roughly 1-2 minutes to boot after a remote restart.
+RESTART_WAIT = 180.0
 
 # Timestamps outside this window are treated as mis-decoded garbage.
 MIN_YEAR = 2015
@@ -575,6 +577,68 @@ def _cross_check(info: DeviceInfo, users: Sequence[DeviceUser],
         report.add_note(f"decoded range: {first:%d-%m-%Y %H:%M:%S} .. {last:%d-%m-%Y %H:%M:%S}")
 
 
+def wait_until_reachable(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, password: int = 0,
+                         timeout: int = DEFAULT_TIMEOUT, wait_seconds: float = RESTART_WAIT,
+                         poll: float = 5.0, progress: ProgressFn = None,
+                         should_stop=None) -> bool:
+    """Poll the terminal until it accepts a ZK session again (after a reboot)."""
+    say = progress or (lambda message: None)
+    deadline = time.monotonic() + max(0.0, wait_seconds)
+    probe = 0
+    while True:
+        if should_stop is not None and should_stop():
+            say("Wait cancelled.")
+            return False
+        probe += 1
+        try:
+            with device_session(host, port=port, password=password,
+                                timeout=min(timeout, 8)):
+                pass
+            say(f"Terminal is back online (after {probe} probe(s)).")
+            return True
+        except DeviceError as exc:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                say(f"Terminal did not come back within {wait_seconds:.0f}s.")
+                return False
+            say(f"Not back yet: {str(exc).splitlines()[0]} — {remaining:.0f}s left")
+            if _interruptible_sleep(min(poll, remaining), should_stop):
+                say("Wait cancelled.")
+                return False
+
+
+def restart_device(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, password: int = 0,
+                   timeout: int = DEFAULT_TIMEOUT, wait_seconds: float = RESTART_WAIT,
+                   poll: float = 5.0, progress: ProgressFn = None,
+                   should_stop=None) -> bool:
+    """Reboot the terminal over the ZK protocol (CMD_RESTART) and wait for it back.
+
+    Attendance records live in flash, so a reboot never loses them; the terminal
+    is offline for roughly 1-2 minutes. Requires the terminal to answer TCP — a
+    terminal that is completely unreachable cannot be rebooted remotely, it can
+    only be waited for.
+    """
+    say = progress or (lambda message: None)
+    if should_stop is not None and should_stop():
+        say("Restart cancelled.")
+        return False
+    say(f"Sending the reboot command to {host}:{port} ...")
+    try:
+        with device_session(host, port=port, password=password,
+                            timeout=min(timeout, 8)) as connection:
+            connection.restart()
+    except DeviceError as exc:
+        say(f"Could not send the reboot command: {str(exc).splitlines()[0]}")
+        return False
+    say("Reboot accepted — the terminal is restarting (~1-2 minutes). "
+        "Attendance data is stored in flash and is not lost.")
+    if wait_seconds <= 0:
+        return True
+    return wait_until_reachable(host, port=port, password=password, timeout=timeout,
+                                wait_seconds=wait_seconds, poll=poll, progress=progress,
+                                should_stop=should_stop)
+
+
 def _interruptible_sleep(seconds: float, should_stop=None) -> bool:
     """Sleep in slices so a Stop request is honoured within a fraction of a second."""
     end = time.monotonic() + max(0.0, seconds)
@@ -591,7 +655,8 @@ def read_with_retry(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, password
                     timeout: int = DEFAULT_TIMEOUT, attempts: int = 1, delay: float = 30.0,
                     wait_seconds: float = 0.0, pause_device: bool = False,
                     progress: ProgressFn = None, log: ProgressFn = None,
-                    should_stop=None) -> DeviceRead:
+                    should_stop=None, restart_if_stuck: bool = False,
+                    restart_wait: float = RESTART_WAIT) -> DeviceRead:
     """Read the terminal, retrying while it is busy, offline or rebooting.
 
     The WL20 refuses new sessions while another client holds its single one and
@@ -601,11 +666,14 @@ def read_with_retry(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, password
     - ``wait_seconds > 0`` keeps trying until that much time has passed
       (``attempts`` is then ignored);
     - otherwise at most ``attempts`` tries are made, ``delay`` seconds apart;
+    - ``restart_if_stuck`` reboots the terminal (and waits for it to come back)
+      once, when the retries are about to be given up;
     - ``should_stop()`` (e.g. the GUI's Stop button) aborts promptly.
     """
     say = log if log is not None else (progress or (lambda message: None))
     deadline = time.monotonic() + wait_seconds if wait_seconds > 0 else None
     attempt = 0
+    restarted = False
     while True:
         attempt += 1
         try:
@@ -618,6 +686,15 @@ def read_with_retry(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, password
             expired = deadline is not None and time.monotonic() >= deadline
             exhausted = deadline is None and attempt >= max(1, attempts)
             if expired or exhausted:
+                if restart_if_stuck and not restarted:
+                    restarted = True
+                    say("Reads keep failing — rebooting the terminal and waiting for it ...")
+                    if restart_device(host, port=port, password=password, timeout=timeout,
+                                      wait_seconds=restart_wait, progress=say,
+                                      should_stop=should_stop):
+                        say("Terminal is back — one more read attempt.")
+                        continue
+                    say("The reboot did not bring the terminal back.")
                 say(f"Giving up after {attempt} attempt(s): {first_line}")
                 raise
             if should_stop is not None and should_stop():

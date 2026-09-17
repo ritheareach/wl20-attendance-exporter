@@ -62,6 +62,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--wait-for-device", type=float, default=0.0, metavar="SECONDS",
                         help="keep retrying for this long instead of giving up after --retries "
                              "(use it in scheduled exports, e.g. 600 = wait 10 minutes)")
+    parser.add_argument("--restart", action="store_true",
+                        help="reboot the terminal over the ZK protocol (attendance data is kept) "
+                             "and wait for it to come back, then exit")
+    parser.add_argument("--restart-if-needed", action="store_true",
+                        help="if the retries run out, reboot the terminal once and try again")
+    parser.add_argument("--restart-wait", type=float, default=device.RESTART_WAIT, metavar="SECONDS",
+                        help=f"how long to wait for the terminal after a reboot "
+                             f"(default: {device.RESTART_WAIT:.0f})")
     parser.add_argument("--verbose", action="store_true", help="print read progress")
     parser.add_argument("--version", action="version", version=f"wl20-export {__version__}")
     return parser
@@ -90,6 +98,18 @@ def main(argv=None) -> int:
 
     say(f"Connecting to {args.host}:{args.port} ...")
     try:
+        if args.restart:
+            say(f"Restarting the terminal at {args.host}:{args.port} ...")
+            back = device.restart_device(args.host, port=args.port, password=args.password,
+                                         timeout=args.timeout,
+                                         wait_seconds=max(0.0, args.restart_wait),
+                                         progress=say)
+            if back:
+                say("Terminal restarted and back online.")
+                return 0
+            print("FAILED: the terminal did not come back after the reboot.", file=sys.stderr)
+            return 1
+
         if args.test:
             info = device.test_connection(args.host, port=args.port, password=args.password,
                                           timeout=args.timeout)
@@ -106,6 +126,8 @@ def main(argv=None) -> int:
                                       attempts=max(1, args.retries),
                                       delay=max(0.0, args.retry_delay),
                                       wait_seconds=max(0.0, args.wait_for_device),
+                                      restart_if_stuck=args.restart_if_needed,
+                                      restart_wait=max(0.0, args.restart_wait),
                                       progress=say if args.verbose else None,
                                       log=say)
     except device.DeviceError as exc:

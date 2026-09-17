@@ -18,6 +18,7 @@ DEFAULTS: Dict[str, Any] = {
     "timeout": 10,
     "pause_device": False,
     "retry": True,
+    "restart_if_stuck": False,
     "range_preset": "Last 30 days",
     "export_dir": "",
     "last_export_dir": "",

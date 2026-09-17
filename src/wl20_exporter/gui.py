@@ -298,6 +298,7 @@ class SummaryModel(QAbstractTableModel):
 class DeviceWorker(QObject):
     log = Signal(str)
     tested = Signal(object)
+    restarted = Signal(bool)
     fetched = Signal(object)
     failed = Signal(str)
 
@@ -317,10 +318,14 @@ class DeviceWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
+            should_stop = self._stop_flag.is_set if self._stop_flag is not None else None
             if self._job == "test":
                 self.tested.emit(device.test_connection(**self._kwargs))
+            elif self._job == "restart":
+                self.restarted.emit(device.restart_device(progress=self.log.emit,
+                                                          should_stop=should_stop,
+                                                          **self._kwargs))
             else:
-                should_stop = self._stop_flag.is_set if self._stop_flag is not None else None
                 read = device.read_with_retry(progress=self.log.emit, log=self.log.emit,
                                               should_stop=should_stop,
                                               wait_seconds=self._retry_seconds,
@@ -444,6 +449,14 @@ class MainWindow(QMainWindow):
                                     "unreachable while it reboots.")
         self.test_button = QPushButton("Test connection")
         self.test_button.clicked.connect(self.on_test)
+        self.restart_button = QPushButton("Restart terminal")
+        self.restart_button.setToolTip("Reboot the terminal over the network. It is offline for "
+                                      "about 1-2 minutes; attendance records are not lost.")
+        self.restart_button.clicked.connect(self.on_restart_terminal)
+        self.auto_restart_check = QCheckBox("Restart the terminal if reads keep failing")
+        self.auto_restart_check.setChecked(bool(self.settings.get("restart_if_stuck", False)))
+        self.auto_restart_check.setToolTip("Last resort, off by default: once the retries above are "
+                                          "used up, the app reboots the terminal and reads once more.")
         # Minimum widths that fit the longest real value on every platform:
         # full IP, 4-digit port, 6-digit password, "120 s" timeout.
         self.host_edit.setMinimumWidth(150)
@@ -456,7 +469,12 @@ class MainWindow(QMainWindow):
         form.addRow("Timeout", self.timeout_spin)
         form.addRow("", self.pause_check)
         form.addRow("", self.retry_check)
-        form.addRow("", self.test_button)
+        form.addRow("", self.auto_restart_check)
+        button_row = QHBoxLayout()
+        button_row.setSpacing(8)
+        button_row.addWidget(self.test_button, 1)
+        button_row.addWidget(self.restart_button, 1)
+        form.addRow("", button_row)
         layout.addWidget(terminal)
 
         # Range group
@@ -633,6 +651,7 @@ class MainWindow(QMainWindow):
             "timeout": int(self.timeout_spin.value()),
             "pause_device": bool(self.pause_check.isChecked()),
             "retry": bool(self.retry_check.isChecked()),
+            "restart_if_stuck": bool(self.auto_restart_check.isChecked()),
             "range_preset": self.preset_combo.currentText(),
         })
         try:
@@ -661,7 +680,7 @@ class MainWindow(QMainWindow):
         for widget in (self.fetch_button, self.test_button, self.host_edit,
                        self.port_spin,
                        self.password_spin, self.timeout_spin, self.pause_check,
-                       self.retry_check):
+                       self.retry_check, self.auto_restart_check, self.restart_button):
             widget.setEnabled(not busy)
         self.stop_button.setEnabled(busy)
         has_data = self.read_result is not None
@@ -761,6 +780,7 @@ class MainWindow(QMainWindow):
         self.thread.started.connect(self.worker.run)
         self.worker.log.connect(self.log_line)
         self.worker.tested.connect(self.on_tested)
+        self.worker.restarted.connect(self.on_restarted)
         self.worker.fetched.connect(self.on_fetched)
         self.worker.failed.connect(self.on_failed)
         self.thread.start()
@@ -794,12 +814,54 @@ class MainWindow(QMainWindow):
         self._start_job("fetch", host=self.host_edit.text().strip(), port=self.port_spin.value(),
                         password=self.password_spin.value(), timeout=self.timeout_spin.value(),
                         pause_device=self.pause_check.isChecked(),
+                        restart_if_stuck=self.auto_restart_check.isChecked(),
                         retry_seconds=retry_seconds, stop_flag=self._stop_flag)
 
     def on_stop(self) -> None:
         if self._stop_flag is not None and not self._stop_flag.is_set():
             self._stop_flag.set()
             self.log_line("Stop requested — ending the wait …")
+
+    def on_restart_terminal(self) -> None:
+        """Reboot the terminal on request (data lives in flash and is not lost)."""
+        if self.thread is not None:
+            return
+        host = self.host_edit.text().strip()
+        port = self.port_spin.value()
+        answer = QMessageBox.question(
+            self, "Restart terminal",
+            f"Send the reboot command to the terminal at {host}:{port}?\n\n"
+            "It will be offline for about 1-2 minutes. Attendance records are stored in "
+            "the terminal's flash memory and are not lost, and FaceGO reconnects on its "
+            "own when it comes back.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            self.log_line("Restart cancelled.")
+            return
+        self.tabs.setCurrentIndex(3)
+        self._set_busy(True, "Restarting the terminal …")
+        self._stop_flag = threading.Event()
+        self._start_job("restart", host=host, port=port,
+                        password=self.password_spin.value(),
+                        timeout=self.timeout_spin.value(),
+                        wait_seconds=device.RESTART_WAIT,
+                        stop_flag=self._stop_flag)
+
+    @Slot(bool)
+    def on_restarted(self, back_online: bool) -> None:
+        self._finish_job()
+        if back_online:
+            self._set_pill("Terminal restarted", "PillOk")
+            self.log_line("Terminal rebooted and is back online.")
+            QMessageBox.information(self, "Terminal restarted",
+                                    "The terminal rebooted and is answering again.")
+        else:
+            self._set_pill("Restart failed", "PillBad")
+            QMessageBox.warning(
+                self, "Restart",
+                "The terminal did not come back within the wait window.\n"
+                "It may still be booting — check it on the network, then use "
+                "Test connection.")
 
     @Slot(object)
     def on_tested(self, info) -> None:
