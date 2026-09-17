@@ -227,15 +227,20 @@ class FilterTests(unittest.TestCase):
 
 
 class ErrorMessageTests(unittest.TestCase):
-    """Connection failures must produce a hint the user can act on."""
+    """Connection failures must produce a hint the user can act on.
 
-    def test_timeout_points_at_the_single_session(self):
+    The assertions match the hint constants rather than loose wording, so the
+    sentences can be improved without silently losing the guidance.
+    """
+
+    def test_timeout_points_at_the_busy_terminal(self):
         text = device._explain(TimeoutError("timed out"))
-        self.assertIn("one client at a time", text)
+        self.assertIn(device.BUSY_HINT, text)
 
     def test_refused_points_at_power_and_network(self):
         text = device._explain(ConnectionRefusedError(111, "Connection refused"))
         self.assertIn("powered", text)
+        self.assertIn(device.UNREACHABLE_HINT, text)
 
     def test_wrapped_socket_error_is_unwrapped(self):
         class ZKNetworkError(Exception):
@@ -248,7 +253,7 @@ class ErrorMessageTests(unittest.TestCase):
                 raise ZKNetworkError("ZKNetworkError: [Errno 32] Broken pipe") from exc
         except ZKNetworkError as exc:
             text = device._explain(exc)
-        self.assertIn("same network", text)
+        self.assertIn(device.UNREACHABLE_HINT, text)
         self.assertIn("ZKNetworkError", text, "the original error text must survive")
 
     def test_unknown_error_has_no_invented_hint(self):

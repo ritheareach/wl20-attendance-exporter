@@ -44,9 +44,15 @@ MAX_YEAR = 2035
 ProgressFn = Optional[Callable[[str], None]]
 
 BUSY_HINT = (
-    "The terminal serves one client at a time. If the FaceGO server (or another "
-    "export window) is holding the connection, the device refuses new sessions — "
-    "wait for it to release the socket, or stop the FaceGO listener briefly."
+    "The terminal is busy or the link is slow. The FaceGO server keeps a live "
+    "connection to this terminal, and reading it at the same time can time out; "
+    "wait a moment and try again, or use 'Restart terminal' if it stays stuck."
+)
+
+UNREACHABLE_HINT = (
+    "Check the address, that the terminal is powered, and that this computer is "
+    "on the same office network as it. A firewall or a different Wi-Fi/SSID "
+    "(for example a guest network) also looks exactly like this."
 )
 
 
@@ -339,18 +345,78 @@ def _root_cause(exc: BaseException) -> BaseException:
     return current
 
 
-def _explain(exc: Exception) -> str:
+def local_address_for(host: str, port: int = 0) -> str:
+    """The local IP address this computer would use to reach ``host``.
+
+    The probe uses a UDP socket, which only performs a route lookup: nothing is
+    sent and no connection is opened, so it is safe to call while diagnosing.
+    """
+    if not host:
+        return ""
+    try:
+        info = socket.getaddrinfo(host, port or 9, socket.AF_INET, socket.SOCK_DGRAM)
+    except Exception:
+        return ""
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    except OSError:  # pragma: no cover - no socket layer available
+        return ""
+    try:
+        probe.connect(info[0][4][:2])
+        return str(probe.getsockname()[0])
+    except Exception:
+        return ""
+    finally:
+        probe.close()
+
+
+def network_hint(host: str, local: str) -> str:
+    """One plain-language line comparing this computer's network with the device's.
+
+    'Cannot connect' is far more often a network problem (wrong Wi-Fi, guest
+    network, firewall) than an app problem, and the two look identical in the
+    error text -- so say which one this is.
+    """
+    if not host or not local:
+        return ""
+    host_octets = host.split(".")
+    local_octets = local.split(".")
+    if len(host_octets) != 4 or len(local_octets) != 4:
+        return f"This computer would reach {host} from {local}."
+    try:
+        numbers = [int(part) for part in host_octets + local_octets]
+    except ValueError:
+        return f"This computer would reach {host} from {local}."
+    host_net, local_net = numbers[:4], numbers[4:]
+    mine = ".".join(str(part) for part in local_net[:3])
+    theirs = ".".join(str(part) for part in host_net[:3])
+    if host_net[:3] == local_net[:3]:
+        return (f"This computer is on the same network as the terminal "
+                f"({mine}.x), so this is not a network mismatch -- the terminal "
+                f"may simply be busy. Try again, or restart it from the app.")
+    if host_net[:2] == local_net[:2] and abs(host_net[2] - local_net[2]) == 1:
+        return (f"This computer ({mine}.x) and the terminal ({theirs}.x) are in "
+                f"the same larger range, so the address should work; the terminal "
+                f"is probably unreachable for another reason.")
+    return (f"This computer is on {mine}.x but the terminal is on {theirs}.x -- "
+            f"two different networks (another Wi-Fi/SSID or VLAN). No app setting "
+            f"can fix that: this computer has to join the terminal's network.")
+
+
+def _explain(exc: Exception, host: str = "", port: int = 0) -> str:
     text = f"{type(exc).__name__}: {exc}"
     cause = _root_cause(exc)
     blob = f"{type(cause).__name__} {cause} {exc}".lower()
+    lines = [text]
     if isinstance(cause, (socket.timeout, TimeoutError)) or "timed out" in blob:
-        return f"{text}\n{BUSY_HINT}"
-    if (isinstance(cause, OSError) or "refused" in blob or "broken pipe" in blob
+        lines.append(BUSY_HINT)
+    elif (isinstance(cause, OSError) or "refused" in blob or "broken pipe" in blob
             or "unreachable" in blob):
-        return (f"{text}\nCheck that the terminal is powered, on the same network, "
-                f"and that TCP communication is enabled on it. If the FaceGO server "
-                f"is running, it usually holds the terminal's only session.")
-    return text
+        lines.append(UNREACHABLE_HINT)
+    where = network_hint(host, local_address_for(host) if host else "")
+    if where:
+        lines.append(where)
+    return "\n".join(lines)
 
 
 @contextmanager
@@ -367,7 +433,7 @@ def device_session(host: str, port: int = DEFAULT_PORT, password: int = 0,
     try:
         connection = device.connect()
     except Exception as exc:
-        raise DeviceError(_explain(exc)) from exc
+        raise DeviceError(_explain(exc, host=host, port=port)) from exc
     try:
         yield connection
     finally:
