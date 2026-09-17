@@ -127,6 +127,22 @@ roughly 1-2 minutes, and anything else reading it reconnects by itself when it r
 A terminal that is completely unreachable cannot be rebooted remotely — there is nothing
 to send the command to — so the app only waits in that case.
 
+## When the terminal cuts its log short
+
+This WL20 firmware announces its whole log but transfers only its **first 4096 bytes**,
+and it refuses every way of asking for the rest (chunk command, stream ACK, other
+ports — all tested against the terminal). The window starts at the *oldest* record, so
+once the log passes roughly 186 records the newest punches stop appearing and no fetch
+can ever include them. Reads in that state are marked in the export's Diagnostics sheet.
+
+The way out is to start the log over, and the app does it in one action:
+
+- **In the app**: **Reset terminal log …** — it writes a safety export of everything the
+  terminal currently hands over, then erases the terminal's attendance log. Users,
+  fingerprints and settings are untouched. Every punch from then on is readable again.
+- **CLI**: `wl20-export --clear-after-export` does the same, and it can only ever run
+  after a workbook is written (no export, no erase).
+
 Unattended daily export on the Jetson (waits up to 10 minutes for the terminal):
 
 ```bash
