@@ -44,9 +44,9 @@ MAX_YEAR = 2035
 ProgressFn = Optional[Callable[[str], None]]
 
 BUSY_HINT = (
-    "The terminal is busy or the link is slow. The FaceGO server keeps a live "
-    "connection to this terminal, and reading it at the same time can time out; "
-    "wait a moment and try again, or use 'Restart terminal' if it stays stuck."
+    "The terminal is busy or the link is slow: while another program is talking "
+    "to it, a read can time out. Wait a moment and try again, or use "
+    "'Restart terminal' if it stays stuck."
 )
 
 UNREACHABLE_HINT = (
@@ -194,6 +194,18 @@ def parse_attendance_payload(payload: bytes, users: Sequence[DeviceUser],
     if not body:
         report.add_warning("attendance payload empty after the size counter")
         return []
+
+    # The WL20 announces the full length of its log but sends a single 4096-byte
+    # frame and refuses chunk continuation (command 1504), so once the log grows
+    # past ~4 KB the newest punches are simply not transferable. Warn instead of
+    # exporting a silently incomplete log. (4 bytes of slack: some firmware
+    # counts its own size counter in the declared length.)
+    shortfall = total_size - len(body)
+    if shortfall > 4:
+        report.add_warning(
+            f"partial log: the terminal declares {total_size} bytes of attendance but "
+            f"sent only {len(body)} ({shortfall} bytes missing) — the newest punches are "
+            f"cut off by the terminal's transfer limit, not by this app")
 
     # Some firmware includes the 4-byte size counter in the declared length.
     # Keep both slices as candidates instead of overwriting the payload:

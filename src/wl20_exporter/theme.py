@@ -29,6 +29,8 @@ QLabel#PillOk {{ background: #e7f6ec; color: #1b7f3b; border: 1px solid #bfe6cb;
     border-radius: 10px; padding: 3px 10px; font-size: 12px; font-weight: 600; }}
 QLabel#PillBad {{ background: #fdeaea; color: #b3261e; border: 1px solid #f4c7c3;
     border-radius: 10px; padding: 3px 10px; font-size: 12px; font-weight: 600; }}
+QLabel#PillWarn {{ background: #fff4e5; color: #9a5b00; border: 1px solid #f2d5a8;
+    border-radius: 10px; padding: 3px 10px; font-size: 12px; font-weight: 600; }}
 
 QFrame#Card {{
     background: #ffffff; border: 1px solid #e2e6ee; border-radius: 10px;

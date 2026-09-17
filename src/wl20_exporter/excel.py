@@ -1,6 +1,6 @@
 """Excel (.xlsx) and CSV export.
 
-The workbook mirrors the layout of the office's FaceGO attendance log
+The workbook mirrors the layout of the office attendance log
 (`.recording_log/<Month>_<Year>_attendance.xlsx`): one sheet per day named
 DD-MM-YYYY, newest first, with the same seven columns — No., Staff ID,
 Staff Name, First Check-in, Last Check-out, Total Hours, Status — the same
@@ -9,7 +9,7 @@ and hours read "9h19mn", exactly like that log, so HR reads both files the
 same way.
 
 Optional extras (off by default) keep the tool useful for troubleshooting:
-`include_punches` adds the raw punch list per day (FaceGO's "raw log"
+`include_punches` adds the raw punch list per day (the office "raw log"
 equivalent) and `include_details` adds the Device Info and Diagnostics sheets.
 """
 
@@ -28,7 +28,7 @@ from . import __version__
 from .models import DailyRow, DeviceRead, PunchRecord
 from .summary import build_daily_rows, summary_totals
 
-# Same palette as the FaceGO log and the other office reports.
+# Same palette as the other office reports and the other office reports.
 HEADER_FILL = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
 HEADER_FONT = Font(name="Arial", size=12, bold=True, color="FFFFFF")
 TITLE_FONT = Font(name="Arial", size=12, bold=True, color="366092")
@@ -42,7 +42,7 @@ LEFT = Alignment(horizontal="left", vertical="center")
 TIME_FMT = "hh:mm"
 DATE_FMT = "dd-mm-yyyy"
 
-# Column sets + widths copied from the FaceGO log.
+# Column sets + widths follow the office attendance log.
 DAY_HEADERS = ["No.", "Staff ID", "Staff Name", "First Check-in", "Last Check-out",
                "Total Hours", "Status"]
 DAY_WIDTHS = [5, 13, 22, 16, 16, 13, 12]
@@ -81,7 +81,7 @@ def sheet_name(day: date) -> str:
 
 
 def _write_day_sheet(sheet, rows: Sequence[DailyRow]) -> None:
-    """One day of attendance — the same seven columns as the FaceGO log."""
+    """One day of attendance — the office's seven columns."""
     _style_header(sheet, 1, DAY_HEADERS)
     sheet.freeze_panes = "A2"
     for position, row in enumerate(rows, start=1):
@@ -93,7 +93,7 @@ def _write_day_sheet(sheet, rows: Sequence[DailyRow]) -> None:
             first = sheet.cell(row=line, column=4, value=row.first_in.time())
             first.number_format = TIME_FMT
             first.font = DATA_FONT
-        # Like the FaceGO log: a day with no check-out yet leaves the last
+        # Like the office log: a day with no check-out yet leaves the last
         # check-out and the total hours blank and reads "Present".
         if row.last_out and row.has_checkout:
             last = sheet.cell(row=line, column=5, value=row.last_out.time())
@@ -219,7 +219,7 @@ def export_workbook(path, read: DeviceRead, start: Optional[date] = None,
     workbook = Workbook()
     workbook.remove(workbook.active)
 
-    for day in sorted(by_day, reverse=True):  # newest day first, like the FaceGO log
+    for day in sorted(by_day, reverse=True):  # newest day first, like the office log
         day_rows = by_day[day]
         if include_punches:
             sheet = workbook.create_sheet(sheet_name(day) + " punches")
@@ -234,8 +234,12 @@ def export_workbook(path, read: DeviceRead, start: Optional[date] = None,
         sheet.cell(row=2, column=1,
                    value="No attendance records in the selected range").font = DATA_FONT
 
+    # Warnings always get a Diagnostics sheet: a partial log (the terminal sends
+    # only its first 4096 bytes) must never be exported silently.
     if include_details:
         _write_info_sheet(workbook.create_sheet("Device Info"), read, start, end, len(records))
+        _write_diagnostics_sheet(workbook.create_sheet("Diagnostics"), read)
+    elif read.report.warnings:
         _write_diagnostics_sheet(workbook.create_sheet("Diagnostics"), read)
 
     path.parent.mkdir(parents=True, exist_ok=True)

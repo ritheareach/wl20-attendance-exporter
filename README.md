@@ -94,8 +94,8 @@ plus the retry flags below.
 
 ## If the terminal is busy, offline or rebooting
 
-The WL20 accepts one session at a time (the FaceGO server normally holds it) and is
-unreachable while it reboots, so an export has to wait it out instead of failing:
+The WL20 handles one read at a time and is unreachable while it reboots, so an export
+has to wait it out instead of failing:
 
 - **In the app**: *Retry if the terminal is busy or offline* is on by default. It keeps
   trying for up to 5 minutes, logging every attempt, and the **Stop** button cancels the
@@ -106,10 +106,9 @@ unreachable while it reboots, so an export has to wait it out instead of failing
 
 ## Restarting the terminal
 
-The app can reboot the terminal over the ZK protocol (the same `CMD_RESTART` the FaceGO
-repo's `scripts/restart_wl20.py` sends). Attendance records live in flash, so a reboot
-never loses them; the terminal is offline for roughly 1-2 minutes and FaceGO reconnects
-on its own when it returns.
+The app can reboot the terminal over the ZK protocol (`CMD_RESTART`). Attendance records
+live in the terminal's flash, so a reboot never loses them; the terminal is offline for
+roughly 1-2 minutes, and anything else reading it reconnects by itself when it returns.
 
 - **In the app**: the **Restart terminal** button (it asks first), and the optional
   *Restart the terminal if reads keep failing* — off by default, a last resort that
@@ -132,13 +131,17 @@ crontab -e     # then add, on one line:
 
 On Windows the same command works under Task Scheduler.
 
-## Important: one TCP session per terminal
+## Important: the app talks only to the terminal
 
-The WL20 serves **one client at a time**. While this app is reading, the FaceGO
-realtime listener on the office server cannot hold its socket, and a fingerprint
-scan made during the read may be missed by the live system (the device's own flash
-still holds the record — the next FaceGO sync picks it up). Run exports outside
-peak hours, or read from the FaceGO API instead when the server is up.
+There is no server, database or service in this picture: the app opens its own socket to
+the terminal's address, reads its flash memory and closes it again. Nothing else has to
+be running, and the app does not read from — or write to — any other system.
+
+The consequence is that the terminal serves **one client at a time**: while another
+program or another export window is reading it, a read here can be slow or time out, and
+a fingerprint scan made during a read may reach that other program a moment late (the
+terminal's flash keeps the record either way). Run exports outside peak hours if reads
+time out.
 
 ## Build installers
 

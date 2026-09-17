@@ -1,4 +1,4 @@
-"""Excel/CSV export tests — the workbook must match the FaceGO log layout."""
+"""Excel/CSV export tests — the workbook must match the office log layout."""
 
 from __future__ import annotations
 
@@ -146,6 +146,35 @@ class CsvTests(unittest.TestCase):
             self.assertIn("STF-0001", lines[1])
             self.assertIn("14-09-2026,08:01:05", lines[1])
             self.assertIn("14-09-2026 08:01:05", lines[1])
+
+
+class PartialLogSheetTests(unittest.TestCase):
+    """A partial read must never produce a workbook that looks complete.
+
+    The terminal hands over only the first 4096 bytes of its log, so the newest
+    punches can be missing. The workbook has to carry that warning itself, since
+    HR opens the file, not the app's log window.
+    """
+
+    def test_warning_adds_a_diagnostics_sheet_even_without_details(self):
+        read = sample_read()
+        read.report.warnings.append(
+            "partial log: the terminal declares 4400 bytes of attendance but sent only 4092")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = excel.export_workbook(Path(tmp) / "partial.xlsx", read)  # minimal layout
+            workbook = load_workbook(path)
+            self.assertIn("Diagnostics", workbook.sheetnames)
+            text = " ".join(str(cell) for row in workbook["Diagnostics"].iter_rows(values_only=True)
+                            for cell in row if cell is not None)
+            self.assertIn("partial log", text)
+
+    def test_clean_read_keeps_the_minimal_workbook(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = excel.export_workbook(Path(tmp) / "clean.xlsx", sample_read())
+            workbook = load_workbook(path)
+            self.assertNotIn("Diagnostics", workbook.sheetnames)
+            self.assertNotIn("Device Info", workbook.sheetnames)
+            self.assertTrue(any(sheet.startswith("14-09-2026") for sheet in workbook.sheetnames))
 
 
 class FilenameTests(unittest.TestCase):

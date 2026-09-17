@@ -226,6 +226,49 @@ class FilterTests(unittest.TestCase):
         self.assertEqual(len(read.records), 3, "the original read must not be mutated")
 
 
+class PartialLogWarningTests(unittest.TestCase):
+    """The WL20 sends one 4096-byte frame and refuses the continuation.
+
+    Once its log grows past that, the newest punches cannot be transferred at
+    all. An export must say so rather than look complete.
+    """
+
+    def setUp(self):
+        self.users = sample_users()
+
+    def test_short_payload_warns_that_the_newest_punches_are_cut_off(self):
+        # Exactly what the office terminal does: the buffer declares 4400 bytes
+        # (200 x 22-byte records) but only 4092 bytes of payload are delivered.
+        body = b"".join(compressed_record(1, "STF-0001", datetime(2026, 9, 1, 8, 0))
+                        for _ in range(260))[:4092]
+        truncated = struct.pack("<I", 4400) + body
+        self.assertEqual(len(truncated), 4096)
+
+        report = ParseReport()
+        device.parse_attendance_payload(truncated, self.users, report)
+
+        warnings = " ".join(report.warnings)
+        self.assertIn("partial log", warnings)
+        self.assertIn("declares 4400", warnings)
+        self.assertIn("cut off", warnings)
+        self.assertEqual(report.declared_bytes, 4400)
+        self.assertEqual(report.received_bytes, 4092)
+
+    def test_complete_payload_is_not_flagged(self):
+        payload = attendance_payload(
+            [compressed_record(1, "STF-0001", datetime(2026, 9, 15, 8, 0))])
+        report = ParseReport()
+        device.parse_attendance_payload(payload, self.users, report)
+        self.assertEqual(report.warnings, [])
+
+    def test_firmware_that_counts_its_own_size_field_is_not_flagged(self):
+        body = b"".join([compressed_record(1, "STF-0001", datetime(2026, 9, 15, 8, 0))])
+        payload = struct.pack("<I", len(body) + 4) + body  # declared includes the counter
+        report = ParseReport()
+        device.parse_attendance_payload(payload, self.users, report)
+        self.assertEqual(report.warnings, [])
+
+
 class ErrorMessageTests(unittest.TestCase):
     """Connection failures must produce a hint the user can act on.
 

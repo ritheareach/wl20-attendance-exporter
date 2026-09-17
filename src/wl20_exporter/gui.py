@@ -55,9 +55,9 @@ from .theme import ACCENT, STYLESHEET
 APP_TITLE = "WL20 Attendance Exporter"
 PRESETS = ["All records", "Today", "Last 7 days", "Last 30 days", "This month", "Custom"]
 
-BUSY_NOTE = ("The terminal serves one connection at a time. While this app reads, the "
-             "FaceGO live listener on the office server is pushed off its socket — run "
-             "exports outside peak hours.")
+BUSY_NOTE = ("The terminal handles one read at a time. A read here can be slow while "
+             "other software on the network is using the terminal, so export outside "
+             "peak hours if it times out.")
 
 # Sorting must not use the displayed text: "01-10-2026" would sort before
 # "02-09-2026" in DD-MM-YYYY, and "10.00" before "9.52". This role carries a
@@ -444,9 +444,9 @@ class MainWindow(QMainWindow):
                                    "The terminal is re-enabled automatically.")
         self.retry_check = QCheckBox("Retry if the terminal is busy or offline")
         self.retry_check.setChecked(bool(self.settings.get("retry", True)))
-        self.retry_check.setToolTip("Keeps trying for up to 5 minutes: the WL20 refuses new "
-                                    "sessions while the FaceGO server holds its socket, and is "
-                                    "unreachable while it reboots.")
+        self.retry_check.setToolTip("Keeps trying for up to 5 minutes: a busy terminal can "
+                                    "refuse a read, and the terminal is unreachable while it "
+                                    "reboots.")
         self.test_button = QPushButton("Test connection")
         self.test_button.clicked.connect(self.on_test)
         self.restart_button = QPushButton("Restart terminal")
@@ -832,8 +832,7 @@ class MainWindow(QMainWindow):
             self, "Restart terminal",
             f"Send the reboot command to the terminal at {host}:{port}?\n\n"
             "It will be offline for about 1-2 minutes. Attendance records are stored in "
-            "the terminal's flash memory and are not lost, and FaceGO reconnects on its "
-            "own when it comes back.",
+            "the terminal's flash memory and are not lost across a reboot.",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if answer != QMessageBox.Yes:
             self.log_line("Restart cancelled.")
@@ -879,7 +878,10 @@ class MainWindow(QMainWindow):
     def on_fetched(self, read: DeviceRead) -> None:
         self.read_result = read
         self._show_device(read.info)
-        self._set_pill(f"{read.info.name or 'Connected'} · {len(read.records)} records", "PillOk")
+        if read.report.warnings:
+            self._set_pill(f"{len(read.records)} records · read incomplete", "PillWarn")
+        else:
+            self._set_pill(f"{read.info.name or 'Connected'} · {len(read.records)} records", "PillOk")
 
         start, end = self._selected_dates()
         self.last_range = (start, end)
