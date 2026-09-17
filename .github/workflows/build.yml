@@ -57,13 +57,23 @@ jobs:
       - name: Build the app
         run: pyinstaller packaging/wl20-exporter.spec --noconfirm
 
-      - name: Verify the frozen app
+      # A GUI executable is detached by the shell, so on Windows the process must
+      # be started with -Wait for its exit code to mean anything.
+      - name: Verify the frozen app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $run = Start-Process ./dist/WL20-Attendance-Exporter.exe -ArgumentList "--selftest" `
+                 -Wait -PassThru -NoNewWindow
+          if ($run.ExitCode -ne 0) { throw "single-file selftest failed ($($run.ExitCode))" }
+          Write-Host "single-file selftest exit code: $($run.ExitCode)"
+
+      - name: Verify the frozen app (macOS / Linux)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
             ./"dist/WL20 Attendance Exporter.app/Contents/MacOS/WL20-Attendance-Exporter" --selftest
-          elif [ "$RUNNER_OS" = "Windows" ]; then
-            ./dist/WL20-Attendance-Exporter.exe --selftest
           else
             ./dist/WL20-Attendance-Exporter --selftest
           fi
@@ -79,9 +89,17 @@ jobs:
         run: |
           pyinstaller packaging/wl20-exporter.spec --noconfirm \
             --distpath dist-folder --workpath build-folder
-          ./dist-folder/WL20-Attendance-Exporter/WL20-Attendance-Exporter.exe --selftest
           powershell -Command "Compress-Archive -Path 'dist-folder/WL20-Attendance-Exporter' -DestinationPath 'dist/WL20-Attendance-Exporter-windows-folder.zip' -Force"
           ls -la dist
+
+      - name: Verify the folder build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = "dist-folder\WL20-Attendance-Exporter\WL20-Attendance-Exporter.exe"
+          $run = Start-Process $exe -ArgumentList "--selftest" -Wait -PassThru -NoNewWindow
+          if ($run.ExitCode -ne 0) { throw "folder-build selftest failed ($($run.ExitCode))" }
+          Write-Host "folder-build selftest exit code: $($run.ExitCode)"
 
       - name: Build installer (Windows, Inno Setup)
         if: runner.os == 'Windows'
@@ -110,9 +128,9 @@ jobs:
           $exe = Join-Path $dir "WL20-Attendance-Exporter.exe"
           if (!(Test-Path $exe)) { throw "installer did not place the app in $dir" }
           if (!(Test-Path (Join-Path $dir "unins000.exe"))) { throw "no uninstaller was created" }
-          & $exe --selftest
-          if ($LASTEXITCODE -ne 0) { throw "the installed app failed its selftest" }
-          Write-Host "installed and verified at $dir"
+          $run = Start-Process $exe -ArgumentList "--selftest" -Wait -PassThru -NoNewWindow
+          if ($run.ExitCode -ne 0) { throw "the installed app failed its selftest ($($run.ExitCode))" }
+          Write-Host "installed and verified at $dir (selftest exit code $($run.ExitCode))"
 
       - name: Build DMG (macOS)
         if: runner.os == 'macOS'
