@@ -30,17 +30,23 @@ Windows, macOS and Linux by GitHub Actions). The repository is public, so no
 GitHub account is needed — download straight from the machine that will run the
 app rather than copying it between computers.
 
-| OS | File |
-| --- | --- |
-| Windows | `WL20-Attendance-Exporter.exe` (single file) |
-| Windows (fallback) | `WL20-Attendance-Exporter-windows-folder.zip` — unpack and run the `.exe` inside |
-| macOS | `WL20-Attendance-Exporter-macos.zip` (app bundle) |
-| Linux | `WL20-Attendance-Exporter` |
+| OS | File | What it is |
+| --- | --- | --- |
+| Windows | `WL20-Attendance-Exporter-Setup-<version>.exe` | normal installer: per-user (no admin rights needed), Start Menu entry, uninstaller |
+| Windows (portable) | `WL20-Attendance-Exporter.exe` · `-windows-folder.zip` | run without installing (the zip is for machines where antivirus blocks the single file) |
+| macOS | `WL20-Attendance-Exporter-macos.dmg` | open the disk image and drag the app to Applications |
+| macOS (zip) | `-macos.zip` | the same app bundle without the disk image |
+| Linux | `WL20-Attendance-Exporter` | single-file executable (chmod +x and run) |
 
 No Python installation is needed for the packaged builds. The builds are not
 code-signed: on Windows choose *More info → Run anyway* (SmartScreen), on macOS
 right-click the app → *Open* (Gatekeeper). Verify the download against
 `SHA256SUMS.txt` from the same release.
+
+Each release is built and then **installed/mounted on its own platform by CI**: the
+Windows installer is run silently from PowerShell and the installed app is executed,
+and the macOS disk image is mounted and the app inside it is launched — so a broken
+installer cannot reach the Releases page.
 
 **Save the file to a real folder before running it.** Launching it straight from
 the browser's download bar runs it out of Chrome/Edge's temporary `scoped_dir`,

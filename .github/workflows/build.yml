@@ -83,6 +83,55 @@ jobs:
           powershell -Command "Compress-Archive -Path 'dist-folder/WL20-Attendance-Exporter' -DestinationPath 'dist/WL20-Attendance-Exporter-windows-folder.zip' -Force"
           ls -la dist
 
+      - name: Build installer (Windows, Inno Setup)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path src\wl20_exporter\__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            Write-Host "Inno Setup missing from the image - installing it"
+            choco install innosetup --no-progress -y
+          }
+          if (!(Test-Path $iscc)) { throw "ISCC.exe not found" }
+          & $iscc "/DMyAppVersion=$version" "packaging\windows-installer.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+          Get-ChildItem dist\*Setup*.exe | Format-Table Name, Length
+
+      - name: Verify the installer (silent install, then the app's own selftest)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist\*Setup*.exe | Select-Object -First 1).FullName
+          Write-Host "installing $setup"
+          $proc = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=install.log" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "installer exited $($proc.ExitCode)" }
+          $dir = Join-Path $env:LOCALAPPDATA "Programs\WL20 Attendance Exporter"
+          $exe = Join-Path $dir "WL20-Attendance-Exporter.exe"
+          if (!(Test-Path $exe)) { throw "installer did not place the app in $dir" }
+          if (!(Test-Path (Join-Path $dir "unins000.exe"))) { throw "no uninstaller was created" }
+          & $exe --selftest
+          if ($LASTEXITCODE -ne 0) { throw "the installed app failed its selftest" }
+          Write-Host "installed and verified at $dir"
+
+      - name: Build DMG (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dmg-staging
+          cp -R "dist/WL20 Attendance Exporter.app" dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "WL20 Attendance Exporter" -srcfolder dmg-staging \
+            -ov -format UDZO "dist/WL20-Attendance-Exporter-macos.dmg"
+          ls -la dist
+
+      - name: Verify the DMG (mount, run the app's selftest)
+        if: runner.os == 'macOS'
+        run: |
+          hdiutil attach "dist/WL20-Attendance-Exporter-macos.dmg" -nobrowse -mountpoint /tmp/wl20dmg
+          ls -la /tmp/wl20dmg
+          /tmp/wl20dmg/"WL20 Attendance Exporter.app"/Contents/MacOS/WL20-Attendance-Exporter --selftest
+          hdiutil detach /tmp/wl20dmg
+
       - name: Package (macOS app bundle)
         if: runner.os == 'macOS'
         run: |
@@ -93,6 +142,7 @@ jobs:
           rm -f "WL20-Attendance-Exporter"
           zip -r -y "WL20-Attendance-Exporter-macos.zip" "WL20 Attendance Exporter.app"
           shasum -a 256 "WL20-Attendance-Exporter-macos.zip" > SHA256SUMS-${{ matrix.artifact }}.txt
+          shasum -a 256 "WL20-Attendance-Exporter-macos.dmg" >> SHA256SUMS-${{ matrix.artifact }}.txt
 
       - name: Package (Windows / Linux binary)
         if: runner.os != 'macOS'
