@@ -717,37 +717,6 @@ def restart_device(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, password:
                                 should_stop=should_stop)
 
 
-def clear_attendance_log(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
-                         password: int = 0, timeout: int = DEFAULT_TIMEOUT,
-                         progress: ProgressFn = None) -> bool:
-    """Erase the terminal's attendance log (CMD_CLEAR_ATTLOG).
-
-    Destructive and one-way: the punches in the terminal's flash are gone, so
-    the caller must have exported them first (the CLI only ever does this after
-    a successful export, and the GUI asks explicitly). User records, fingerprints
-    and settings are *not* touched -- only the punch history.
-
-    Why anyone would want this: this firmware announces its whole log but
-    transfers only its first 4096 bytes, so once the log passes that the newest
-    punches are unreachable. Starting the log over is what makes a later fetch
-    complete again.
-    """
-    say = progress or (lambda message: None)
-    say(f"Erasing the attendance log on {host}:{port} ...")
-    try:
-        with device_session(host, port=port, password=password,
-                            timeout=min(timeout, 8)) as connection:
-            cleared = connection.clear_attendance()
-    except DeviceError as exc:
-        say(f"Could not clear the log: {str(exc).splitlines()[0]}")
-        return False
-    if cleared is False:
-        say("The terminal refused to clear its log.")
-        return False
-    say("Attendance log erased. User records and fingerprints were not touched.")
-    return True
-
-
 def _interruptible_sleep(seconds: float, should_stop=None) -> bool:
     """Sleep in slices so a Stop request is honoured within a fraction of a second."""
     end = time.monotonic() + max(0.0, seconds)

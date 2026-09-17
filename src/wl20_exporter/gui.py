@@ -299,7 +299,6 @@ class DeviceWorker(QObject):
     log = Signal(str)
     tested = Signal(object)
     restarted = Signal(bool)
-    cleared = Signal(bool)
     fetched = Signal(object)
     failed = Signal(str)
 
@@ -326,9 +325,6 @@ class DeviceWorker(QObject):
                 self.restarted.emit(device.restart_device(progress=self.log.emit,
                                                           should_stop=should_stop,
                                                           **self._kwargs))
-            elif self._job == "clear":
-                self.cleared.emit(device.clear_attendance_log(progress=self.log.emit,
-                                                              **self._kwargs))
             else:
                 read = device.read_with_retry(progress=self.log.emit, log=self.log.emit,
                                               should_stop=should_stop,
@@ -352,6 +348,7 @@ class MainWindow(QMainWindow):
         self.settings = config.load()
         self.read_result: DeviceRead | None = None
         self.last_range: tuple = (None, None)
+        self._pending_export: str | None = None
         self.thread: QThread | None = None
         self.worker: DeviceWorker | None = None
         self._stop_flag: threading.Event | None = None
@@ -457,12 +454,6 @@ class MainWindow(QMainWindow):
         self.restart_button.setToolTip("Reboot the terminal over the network. It is offline for "
                                       "about 1-2 minutes; attendance records are not lost.")
         self.restart_button.clicked.connect(self.on_restart_terminal)
-        self.reset_button = QPushButton("Reset terminal log …")
-        self.reset_button.setToolTip(
-            "The terminal hands over only the first part of its log, so the newest punches "
-            "stop appearing once it is full. This exports what is readable and then erases "
-            "the terminal's log, so every punch from then on is readable again. "
-            "User records and fingerprints are not touched.")
         self.auto_restart_check = QCheckBox("Restart the terminal if reads keep failing")
         self.auto_restart_check.setChecked(bool(self.settings.get("restart_if_stuck", False)))
         self.auto_restart_check.setToolTip("Last resort, off by default: once the retries above are "
@@ -485,7 +476,6 @@ class MainWindow(QMainWindow):
         button_row.addWidget(self.test_button, 1)
         button_row.addWidget(self.restart_button, 1)
         form.addRow("", button_row)
-        form.addRow("", self.reset_button)
         layout.addWidget(terminal)
 
         # Range group
@@ -792,7 +782,6 @@ class MainWindow(QMainWindow):
         self.worker.log.connect(self.log_line)
         self.worker.tested.connect(self.on_tested)
         self.worker.restarted.connect(self.on_restarted)
-        self.worker.cleared.connect(self.on_cleared)
         self.worker.fetched.connect(self.on_fetched)
         self.worker.failed.connect(self.on_failed)
         self.thread.start()
@@ -857,69 +846,6 @@ class MainWindow(QMainWindow):
                         timeout=self.timeout_spin.value(),
                         wait_seconds=device.RESTART_WAIT,
                         stop_flag=self._stop_flag)
-
-    @Slot(bool)
-    def on_cleared(self, done: bool) -> None:
-        self._finish_job()
-        if not done:
-            self._set_pill("Reset failed", "PillBad")
-            QMessageBox.warning(self, "Reset terminal log",
-                                "The terminal did not erase its log. Nothing else was changed.")
-            return
-        self._set_pill("Log reset — fetch again", "PillOk")
-        self.log_line("Terminal log erased; the safety export holds the previous punches.")
-        QMessageBox.information(
-            self, "Terminal log reset",
-            "The terminal's attendance log is empty and every punch from now on is readable.\n\n"
-            "Fetch once more during the day and the new punches will appear.")
-
-    def on_clear_log(self) -> None:
-        """Export the readable log, then erase the terminal's copy (one-way)."""
-        if self.thread is not None:
-            return
-        if self.read_result is None or not self.read_result.records:
-            QMessageBox.information(
-                self, "Reset terminal log",
-                "Fetch the terminal first. The export of what it currently holds is the "
-                "only copy of those punches you will have afterwards.")
-            return
-        count = len(self.read_result.records)
-        answer = QMessageBox.warning(
-            self, "Reset terminal log",
-            f"This writes a safety export of the {count} record(s) the terminal currently "
-            f"hands over, and then erases the terminal's attendance log.\n\n"
-            f"• user records and fingerprints are not touched\n"
-            f"• the terminal's own copy of those punches is gone afterwards\n"
-            f"• every punch made from then on is readable again, including today's\n\n"
-            f"Continue?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if answer != QMessageBox.Yes:
-            self.log_line("Reset cancelled.")
-            return
-
-        target = self._ask_path("xlsx", "the current log (safety export)")
-        if target is None:
-            return
-        start, end = self.last_range
-        try:
-            written = excel.export_workbook(target, self.read_result, start, end,
-                                            include_punches=True, include_details=True)
-            size = Path(written).stat().st_size
-        except OSError as exc:
-            QMessageBox.critical(self, "Reset cancelled",
-                                 f"The safety export could not be written:\n{exc}")
-            return
-        if size == 0:
-            QMessageBox.critical(self, "Reset cancelled",
-                                 "The safety export is empty, so nothing was erased.")
-            return
-        self.log_line(f"Safety export written: {written} ({size} bytes)")
-        self.tabs.setCurrentIndex(3)
-        self._set_busy(True, "Resetting the terminal's log …")
-        self._start_job("clear", host=self.host_edit.text().strip(),
-                        port=self.port_spin.value(),
-                        password=self.password_spin.value(),
-                        timeout=self.timeout_spin.value())
 
     @Slot(bool)
     def on_restarted(self, back_online: bool) -> None:
@@ -987,9 +913,14 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(0)
         self._finish_job()
         self.log_line(f"Fetched {len(read.records)} record(s); {len(filtered.records)} in range.")
+        pending = self._pending_export
+        self._pending_export = None
+        if pending:
+            self._export_current(pending)
 
     @Slot(str)
     def on_failed(self, message: str) -> None:
+        self._pending_export = None
         self._set_pill("Connection failed", "PillBad")
         self.log_line(f"FAILED: {message}")
         self._finish_job()
@@ -1017,6 +948,18 @@ class MainWindow(QMainWindow):
         return path
 
     def on_export(self) -> None:
+        if self.thread is not None:
+            return
+        self._pending_export = "xlsx"
+        self.on_fetch()
+
+    def on_export_csv(self) -> None:
+        if self.thread is not None:
+            return
+        self._pending_export = "csv"
+        self.on_fetch()
+
+    def _export_current(self, kind: str) -> None:
         if not self.read_result:
             return
         filtered = self.read_result.filtered(*self.last_range)
@@ -1024,35 +967,22 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Nothing to export",
                                 "No records in the selected date range.")
             return
-        path = self._ask_path("xlsx", "Excel report")
-        if path is None:
-            return
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            start, end = self.last_range
-            written = excel.export_workbook(path, filtered, start, end)
-        except Exception as exc:
-            QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Export failed", f"{type(exc).__name__}: {exc}")
-            return
-        QApplication.restoreOverrideCursor()
-        self.log_line(f"Excel written: {written}")
-        self._offer_open(written, "Excel report saved")
-
-    def on_export_csv(self) -> None:
-        if not self.read_result:
-            return
-        filtered = self.read_result.filtered(*self.last_range)
-        path = self._ask_path("csv", "CSV copy")
+        path = self._ask_path(kind, "Excel report" if kind == "xlsx" else "CSV copy")
         if path is None:
             return
         try:
-            written = excel.export_csv(path, filtered.records)
+            if kind == "xlsx":
+                start, end = self.last_range
+                written = excel.export_workbook(path, filtered, start, end)
+            else:
+                written = excel.export_csv(path, filtered.records)
         except Exception as exc:
             QMessageBox.critical(self, "Export failed", f"{type(exc).__name__}: {exc}")
             return
-        self.log_line(f"CSV written: {written}")
-        self._offer_open(written, "CSV saved")
+        label = "Excel" if kind == "xlsx" else "CSV"
+        title = "Excel report saved" if kind == "xlsx" else "CSV saved"
+        self.log_line(f"{label} written: {written}")
+        self._offer_open(written, title)
 
     def _offer_open(self, path, title: str) -> None:
         box = QMessageBox(self)

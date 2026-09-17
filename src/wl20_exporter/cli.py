@@ -71,10 +71,6 @@ def build_parser() -> argparse.ArgumentParser:
                         help=f"how long to wait for the terminal after a reboot "
                              f"(default: {device.RESTART_WAIT:.0f})")
     parser.add_argument("--verbose", action="store_true", help="print read progress")
-    parser.add_argument("--clear-after-export", action="store_true",
-                        help="after the workbook is written, erase the terminal's attendance "
-                             "log so the next fetch is complete again (one-way: user records "
-                             "and fingerprints are untouched, the punches are gone)")
     parser.add_argument("--version", action="version", version=f"wl20-export {__version__}")
     return parser
 
@@ -156,22 +152,6 @@ def main(argv=None) -> int:
         print(f"FAILED to write Excel file: {exc}", file=sys.stderr)
         return 3
     print(f"Excel written: {written}")
-
-    if args.clear_after_export:
-        # Only ever after a workbook exists on disk: the terminal's own copy of
-        # these punches is what the erase removes.
-        if not Path(written).is_file() or Path(written).stat().st_size == 0:
-            print("Not clearing the terminal's log: the workbook was not written.",
-                  file=sys.stderr)
-            return 4
-        print()
-        if not device.clear_attendance_log(args.host, port=args.port,
-                                           password=args.password, timeout=args.timeout,
-                                           progress=say):
-            print("FAILED: the terminal's log was not cleared.", file=sys.stderr)
-            return 5
-        print("From now on every fetch returns the terminal's whole log again, "
-              "including the newest punches.")
 
     rows = build_daily_rows(filtered.records)
     if rows:

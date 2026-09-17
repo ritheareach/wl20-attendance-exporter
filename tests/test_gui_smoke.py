@@ -179,47 +179,15 @@ class GuiSmokeTests(unittest.TestCase):
         self.assertEqual(started, [], "declining must not reboot anything")
         self.assertIn("Restart cancelled", self.window.log_view.toPlainText())
 
-    def test_reset_button_exists(self):
-        self.assertTrue(hasattr(self.window, "reset_button"))
-        self.assertIn("Reset terminal log", self.window.reset_button.text())
-
-    def test_reset_needs_a_fetch_before_it_can_erase_anything(self):
-        """No read yet -> the dialog explains, and no job is started."""
-        from PySide6.QtWidgets import QMessageBox
-
+    def test_export_always_fetches_latest_data_before_showing_save_dialog(self):
+        """Export must never use attendance cached from an earlier fetch."""
+        self.window.read_result = sample_read()
         started = []
-        self.window._start_job = lambda job, **kwargs: started.append(job)
-        self.window.read_result = None
-        said = []
-        original = QMessageBox.information
-        QMessageBox.information = staticmethod(lambda *args, **kwargs: said.append(args))
-        try:
-            self.window.on_clear_log()
-        finally:
-            QMessageBox.information = original
-        self.assertEqual(started, [], "nothing may be erased before a fetch")
-        self.assertTrue(said, "the user has to be told to fetch first")
-
-    def test_reset_can_be_declined(self):
-        from datetime import datetime
-
-        from PySide6.QtWidgets import QMessageBox
-
-        from wl20_exporter.models import DeviceRead, DeviceInfo, PunchRecord
-
-        self.window.read_result = DeviceRead(
-            info=DeviceInfo(host="192.168.88.245"),
-            records=[PunchRecord(user_id="4", timestamp=datetime(2026, 9, 17, 8, 0, 0))])
-        started = []
-        self.window._start_job = lambda job, **kwargs: started.append(job)
-        original = QMessageBox.warning
-        QMessageBox.warning = staticmethod(lambda *args, **kwargs: QMessageBox.No)
-        try:
-            self.window.on_clear_log()
-        finally:
-            QMessageBox.warning = original
-        self.assertEqual(started, [], "declining must not erase the terminal's log")
-        self.assertIn("Reset cancelled", self.window.log_view.toPlainText())
+        self.window._start_job = lambda job, **kwargs: started.append((job, kwargs))
+        self.window.on_export()
+        self.assertEqual(len(started), 1)
+        self.assertEqual(started[0][0], "fetch")
+        self.assertEqual(self.window._pending_export, "xlsx")
 
     def test_auto_restart_is_opt_in(self):
         self.assertFalse(self.window.auto_restart_check.isChecked(),
