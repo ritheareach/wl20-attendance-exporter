@@ -6,7 +6,8 @@ Writes src/wl20_exporter/assets/icon.{png,ico,icns}: the logo's yellow-framed
 square trimmed to its own frame and centred on a square canvas, so the mark
 stays even at 512/256/128/64/48/32/24/16 px.
 
-The default source is the office logo file on this machine.
+The source is the office logo file, passed with --source (the AIFarm mark with
+the yellow frame); a copy of it is kept in the repo's assets folder.
 """
 
 from __future__ import annotations
@@ -17,8 +18,9 @@ from pathlib import Path
 
 from PIL import Image
 
-DEFAULT_SOURCE = Path(
-    "/home/visionai/Desktop/deepstream-facego-tensorrt/static/src/AIFarm_Logo _cropped.png")
+# The logo is not shipped inside the app; keep a copy next to the other assets
+# so this tool never depends on a file outside the repository.
+DEFAULT_SOURCE = Path(__file__).resolve().parents[1] / "src" / "wl20_exporter" / "assets" / "logo-source.png"
 OUT_DIR = Path(__file__).resolve().parents[1] / "src" / "wl20_exporter" / "assets"
 YELLOW = (249, 239, 36, 255)  # sampled from the logo's frame
 
